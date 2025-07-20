@@ -94,36 +94,23 @@ imageInput.addEventListener('change', e => {
     reader.onload = ev => {
         const img = new Image();
         img.onload = () => {
-            const storeMax = 256;
-            let w = img.width;
-            let h = img.height;
-            let scale = 1;
-            const longest = Math.max(w, h);
-            if (longest > storeMax) scale = storeMax / longest;
-            const storeW = Math.round(w * scale);
-            const storeH = Math.round(h * scale);
-            const canvas = document.createElement('canvas');
-            canvas.width = storeW;
-            canvas.height = storeH;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, storeW, storeH);
-            const dataUrl = canvas.toDataURL('image/png');
+            const dataUrl = ev.target.result;
 
             // size inside the node
             const displayMax = 96;
             let dScale = 1;
-            const longestDisp = Math.max(storeW, storeH);
+            const longestDisp = Math.max(img.width, img.height);
             if (longestDisp > displayMax) dScale = displayMax / longestDisp;
-            const dispW = Math.round(storeW * dScale);
-            const dispH = Math.round(storeH * dScale);
+            const dispW = Math.round(img.width * dScale);
+            const dispH = Math.round(img.height * dScale);
 
             setNodeImage(map, selectedId, {
                 kind: 'image',
                 dataUrl,
                 width: dispW,
                 height: dispH,
-                naturalWidth: storeW,
-                naturalHeight: storeH
+                naturalWidth: img.width,
+                naturalHeight: img.height
             });
             update();
         };

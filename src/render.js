@@ -33,6 +33,7 @@ export function render(map, svg, selectedId) {
         const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         rect.setAttribute('width', node.w);
         rect.setAttribute('height', node.h);
+        if (node.color) rect.style.fill = node.color;
         g.appendChild(rect);
 
         const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');

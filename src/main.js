@@ -58,6 +58,7 @@ newBtn.onclick = () => {
     selectedId = map.rootId;
     pan = {x:0,y:0,scale:1};
     update();
+    startEditing(selectedId);
 };
 
 fitBtn.onclick = fitToScreen;
@@ -120,6 +121,9 @@ window.addEventListener('keydown', e => {
     } else if (e.key === 'F2') {
         e.preventDefault();
         startEditing(selectedId);
+    } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        startEditing(selectedId, e.key);
+        e.preventDefault();
     }
 });
 
@@ -134,7 +138,7 @@ viewport.addEventListener('dblclick', e => {
 let editingInput = null;
 let editingId = null;
 
-function startEditing(id) {
+function startEditing(id, initial) {
     if (editingInput) return;
     editingId = id;
     const nodeEl = viewport.querySelector(`.node[data-id="${id}"]`);
@@ -143,11 +147,15 @@ function startEditing(id) {
     editingInput = document.createElement('input');
     editingInput.type = 'text';
     editingInput.className = 'edit-input';
-    editingInput.value = map.nodes[id].text;
+    editingInput.value = initial !== undefined ? initial : map.nodes[id].text;
     positionEditor(bbox);
     document.body.appendChild(editingInput);
     editingInput.focus();
-    editingInput.select();
+    if (initial === undefined) {
+        editingInput.select();
+    } else {
+        editingInput.setSelectionRange(editingInput.value.length, editingInput.value.length);
+    }
     editingInput.addEventListener('keydown', e => {
         if (e.key === 'Enter') {
             finishEditing();

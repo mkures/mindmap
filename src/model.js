@@ -1,3 +1,5 @@
+const PALETTE = ['#ff6f59', '#f6bd60', '#43aa8b', '#577590', '#d7263d', '#06d6a0'];
+
 export function createEmptyMap() {
     const rootId = 'n1';
     return {
@@ -7,15 +9,23 @@ export function createEmptyMap() {
         createdAt: Date.now(),
         updatedAt: Date.now(),
         version: 1,
+        colorIndex: 0,
         nodes: {
-            [rootId]: { id: rootId, parentId: null, text: 'Root', children: [] }
+            [rootId]: { id: rootId, parentId: null, text: 'Root', children: [], color: '#ffffff' }
         }
     };
 }
 
 export function addChild(map, parentId) {
     const id = 'n' + (Object.keys(map.nodes).length + 1);
-    map.nodes[id] = { id, parentId, text: 'Node', children: [] };
+    let color = '#ffffff';
+    if (parentId === map.rootId) {
+        color = PALETTE[map.colorIndex % PALETTE.length];
+        map.colorIndex++;
+    } else {
+        color = map.nodes[parentId].color;
+    }
+    map.nodes[id] = { id, parentId, text: 'Node', children: [], color };
     map.nodes[parentId].children.push(id);
     map.updatedAt = Date.now();
     return id;

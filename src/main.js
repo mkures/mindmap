@@ -22,8 +22,8 @@ viewport.addEventListener('click', e => {
     const img = e.target.closest('.node-image');
     if (img) {
         overlayImg.src = img.dataset.url;
-        overlayImg.style.width = '';
-        overlayImg.style.height = '';
+        overlayImg.style.width = img.dataset.nw + 'px';
+        overlayImg.style.height = img.dataset.nh + 'px';
         overlay.style.display = 'flex';
         return;
     }

@@ -1,5 +1,6 @@
-const NODE_W = 80;
-const NODE_H = 40;
+export const NODE_MIN_W = 80;
+export const NODE_TEXT_H = 24; // approximate height of one line
+export const NODE_PADDING = 10;
 const H_GAP = 60;
 const V_GAP = 20;
 
@@ -8,8 +9,11 @@ export function layout(map) {
 
     function measure(id) {
         const node = map.nodes[id];
-        node.w = NODE_W + (node.media ? node.media.width + 10 : 0);
-        node.h = Math.max(NODE_H, node.media ? node.media.height + 10 : NODE_H);
+        const textWidth = Math.max(node.text.length * 8 + NODE_PADDING * 2, NODE_MIN_W);
+        const mediaWidth = node.media ? node.media.width + NODE_PADDING * 2 : 0;
+        node.w = Math.max(textWidth, mediaWidth, NODE_MIN_W);
+        const mediaH = node.media ? node.media.height : 0;
+        node.h = NODE_PADDING * 2 + mediaH + (node.media ? NODE_PADDING : 0) + NODE_TEXT_H;
         if (!node.children.length) {
             heights[id] = node.h;
             return heights[id];
@@ -27,7 +31,7 @@ export function layout(map) {
 
     function place(id, depth, centerY) {
         const node = map.nodes[id];
-        node.x = depth * (NODE_W + H_GAP);
+        node.x = depth * (NODE_MIN_W + H_GAP);
         node.y = centerY - node.h / 2;
         if (!node.children.length) return;
         let total = 0;

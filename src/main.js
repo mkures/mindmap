@@ -22,6 +22,8 @@ viewport.addEventListener('click', e => {
     const img = e.target.closest('.node-image');
     if (img) {
         overlayImg.src = img.dataset.url;
+        overlayImg.style.width = img.dataset.nw + 'px';
+        overlayImg.style.height = img.dataset.nh + 'px';
         overlay.style.display = 'flex';
         return;
     }
@@ -46,6 +48,8 @@ const loadInput = document.getElementById('loadInput');
 overlay.addEventListener('click', () => {
     overlay.style.display = 'none';
     overlayImg.src = '';
+    overlayImg.style.width = '';
+    overlayImg.style.height = '';
 });
 
 addChildBtn.onclick = () => {
@@ -90,27 +94,36 @@ imageInput.addEventListener('change', e => {
     reader.onload = ev => {
         const img = new Image();
         img.onload = () => {
-            const max = 128;
+            const storeMax = 256;
             let w = img.width;
             let h = img.height;
             let scale = 1;
-            if (w > h && w > max) scale = max / w;
-            else if (h > w && h > max) scale = max / h;
-            w = Math.round(w * scale);
-            h = Math.round(h * scale);
+            const longest = Math.max(w, h);
+            if (longest > storeMax) scale = storeMax / longest;
+            const storeW = Math.round(w * scale);
+            const storeH = Math.round(h * scale);
             const canvas = document.createElement('canvas');
-            canvas.width = w;
-            canvas.height = h;
+            canvas.width = storeW;
+            canvas.height = storeH;
             const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, w, h);
+            ctx.drawImage(img, 0, 0, storeW, storeH);
             const dataUrl = canvas.toDataURL('image/png');
+
+            // size inside the node
+            const displayMax = 96;
+            let dScale = 1;
+            const longestDisp = Math.max(storeW, storeH);
+            if (longestDisp > displayMax) dScale = displayMax / longestDisp;
+            const dispW = Math.round(storeW * dScale);
+            const dispH = Math.round(storeH * dScale);
+
             setNodeImage(map, selectedId, {
                 kind: 'image',
                 dataUrl,
-                width: w,
-                height: h,
-                naturalWidth: img.width,
-                naturalHeight: img.height
+                width: dispW,
+                height: dispH,
+                naturalWidth: storeW,
+                naturalHeight: storeH
             });
             update();
         };

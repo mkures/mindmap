@@ -1,3 +1,5 @@
+import { NODE_PADDING, NODE_TEXT_H } from './layout.js';
+
 export function render(map, svg, selectedId) {
     svg.innerHTML = '';
     const linkGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -36,23 +38,27 @@ export function render(map, svg, selectedId) {
         if (node.color) rect.style.fill = node.color;
         g.appendChild(rect);
 
-        let offset = 10;
+        let cursorY = NODE_PADDING;
         if (node.media && node.media.kind === 'image') {
             const img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
             img.classList.add('node-image');
             img.dataset.url = node.media.dataUrl;
+            img.dataset.nw = node.media.naturalWidth;
+            img.dataset.nh = node.media.naturalHeight;
             img.setAttribute('href', node.media.dataUrl);
             img.setAttribute('width', node.media.width);
             img.setAttribute('height', node.media.height);
-            img.setAttribute('x', 5);
-            img.setAttribute('y', (node.h - node.media.height) / 2);
+            img.setAttribute('x', (node.w - node.media.width) / 2);
+            img.setAttribute('y', cursorY);
             g.appendChild(img);
-            offset += node.media.width + 5;
+            cursorY += node.media.height + NODE_PADDING;
         }
 
         const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        text.setAttribute('x', offset);
-        text.setAttribute('y', node.h / 2 + 5);
+        text.setAttribute('x', node.w / 2);
+        text.setAttribute('y', cursorY + NODE_TEXT_H / 2);
+        text.setAttribute('text-anchor', 'middle');
+        text.setAttribute('dominant-baseline', 'middle');
         text.textContent = node.text;
         g.appendChild(text);
 

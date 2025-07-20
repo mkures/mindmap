@@ -5,6 +5,8 @@ import { render } from './render.js';
 let map = createEmptyMap();
 let selectedId = map.rootId;
 const viewport = document.getElementById('viewport');
+const overlay = document.getElementById('imageOverlay');
+const overlayImg = document.getElementById('overlayImg');
 
 let pan = {x:0, y:0, scale:1};
 
@@ -17,6 +19,12 @@ update();
 
 // selection handling
 viewport.addEventListener('click', e => {
+    const img = e.target.closest('.node-image');
+    if (img) {
+        overlayImg.src = img.dataset.url;
+        overlay.style.display = 'flex';
+        return;
+    }
     const g = e.target.closest('.node');
     if (g) {
         selectedId = g.dataset.id;
@@ -35,6 +43,10 @@ const saveBtn = document.getElementById('saveBtn');
 const loadBtn = document.getElementById('loadBtn');
 const imageInput = document.getElementById('imageInput');
 const loadInput = document.getElementById('loadInput');
+overlay.addEventListener('click', () => {
+    overlay.style.display = 'none';
+    overlayImg.src = '';
+});
 
 addChildBtn.onclick = () => {
     const id = addChild(map, selectedId);
@@ -184,7 +196,9 @@ document.getElementById('mindmap').addEventListener('wheel', e => {
 // keyboard shortcuts
 window.addEventListener('keydown', e => {
     if (e.target.tagName === 'INPUT') return;
-    if (e.key === 'Tab') {
+    if (e.key === 'Escape' && overlay.style.display === 'flex') {
+        overlay.click();
+    } else if (e.key === 'Tab') {
         e.preventDefault();
         addChildBtn.onclick();
     } else if (e.key === 'Enter') {

@@ -39,6 +39,8 @@ export function render(map, svg, selectedId) {
         let offset = 10;
         if (node.media && node.media.kind === 'image') {
             const img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+            img.classList.add('node-image');
+            img.dataset.url = node.media.dataUrl;
             img.setAttribute('href', node.media.dataUrl);
             img.setAttribute('width', node.media.width);
             img.setAttribute('height', node.media.height);

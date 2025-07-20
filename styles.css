@@ -28,3 +28,16 @@ body, html {
     stroke: #ff6f59;
     stroke-width: 2px;
 }
+
+.link {
+    stroke: #888;
+    stroke-width: 1.5px;
+}
+
+.edit-input {
+    position: absolute;
+    font-size: 14px;
+    box-sizing: border-box;
+    border: 1px solid #333;
+    padding: 2px;
+}

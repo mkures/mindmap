@@ -1,5 +1,27 @@
 export function render(map, svg, selectedId) {
     svg.innerHTML = '';
+    const linkGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    linkGroup.id = 'links';
+    svg.appendChild(linkGroup);
+    const nodeGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    nodeGroup.id = 'nodes';
+    svg.appendChild(nodeGroup);
+
+    // draw links
+    Object.values(map.nodes).forEach(node => {
+        if (node.parentId) {
+            const parent = map.nodes[node.parentId];
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.classList.add('link');
+            line.setAttribute('x1', parent.x + parent.w);
+            line.setAttribute('y1', parent.y + parent.h / 2);
+            line.setAttribute('x2', node.x);
+            line.setAttribute('y2', node.y + node.h / 2);
+            linkGroup.appendChild(line);
+        }
+    });
+
+    // draw nodes
     for (const id in map.nodes) {
         const node = map.nodes[id];
         const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -19,6 +41,6 @@ export function render(map, svg, selectedId) {
         text.textContent = node.text;
         g.appendChild(text);
 
-        svg.appendChild(g);
+        nodeGroup.appendChild(g);
     }
 }

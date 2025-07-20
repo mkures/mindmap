@@ -35,12 +35,16 @@ addChildBtn.onclick = () => {
     const id = addChild(map, selectedId);
     selectedId = id;
     update();
+    startEditing(id);
 };
 
 addSiblingBtn.onclick = () => {
     const id = addSibling(map, selectedId);
-    if (id) selectedId = id;
-    update();
+    if (id) {
+        selectedId = id;
+        update();
+        startEditing(id);
+    }
 };
 
 deleteBtn.onclick = () => {
@@ -113,5 +117,68 @@ window.addEventListener('keydown', e => {
     } else if (e.key === 'f' && e.ctrlKey) {
         e.preventDefault();
         fitToScreen();
+    } else if (e.key === 'F2') {
+        e.preventDefault();
+        startEditing(selectedId);
     }
 });
+
+// double click to edit
+viewport.addEventListener('dblclick', e => {
+    const g = e.target.closest('.node');
+    if (g) {
+        startEditing(g.dataset.id);
+    }
+});
+
+let editingInput = null;
+let editingId = null;
+
+function startEditing(id) {
+    if (editingInput) return;
+    editingId = id;
+    const nodeEl = viewport.querySelector(`.node[data-id="${id}"]`);
+    if (!nodeEl) return;
+    const bbox = nodeEl.getBoundingClientRect();
+    editingInput = document.createElement('input');
+    editingInput.type = 'text';
+    editingInput.className = 'edit-input';
+    editingInput.value = map.nodes[id].text;
+    positionEditor(bbox);
+    document.body.appendChild(editingInput);
+    editingInput.focus();
+    editingInput.select();
+    editingInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+            finishEditing();
+        }
+    });
+    editingInput.addEventListener('blur', finishEditing);
+}
+
+function positionEditor(bbox) {
+    if (!editingInput) return;
+    editingInput.style.left = bbox.x + 'px';
+    editingInput.style.top = bbox.y + 'px';
+    editingInput.style.width = bbox.width + 'px';
+    editingInput.style.height = bbox.height + 'px';
+}
+
+function finishEditing() {
+    if (!editingInput) return;
+    map.nodes[editingId].text = editingInput.value;
+    document.body.removeChild(editingInput);
+    editingInput = null;
+    editingId = null;
+    update();
+}
+
+// reposition editor on update
+const originalUpdate = update;
+update = function() {
+    originalUpdate();
+    if (editingInput && editingId) {
+        const nodeEl = viewport.querySelector(`.node[data-id="${editingId}"]`);
+        if (nodeEl) positionEditor(nodeEl.getBoundingClientRect());
+    }
+};

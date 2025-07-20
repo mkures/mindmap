@@ -13,13 +13,16 @@ export function render(map, svg, selectedId) {
     Object.values(map.nodes).forEach(node => {
         if (node.parentId) {
             const parent = map.nodes[node.parentId];
-            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            line.classList.add('link');
-            line.setAttribute('x1', parent.x + parent.w);
-            line.setAttribute('y1', parent.y + parent.h / 2);
-            line.setAttribute('x2', node.x);
-            line.setAttribute('y2', node.y + node.h / 2);
-            linkGroup.appendChild(line);
+            const x1 = parent.x + parent.w;
+            const y1 = parent.y + parent.h / 2;
+            const x2 = node.x;
+            const y2 = node.y + node.h / 2;
+            const mid = (x1 + x2) / 2;
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.classList.add('link');
+            path.setAttribute('d', `M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`);
+            path.setAttribute('fill', 'none');
+            linkGroup.appendChild(path);
         }
     });
 

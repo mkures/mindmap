@@ -32,6 +32,8 @@ body, html {
 .link {
     stroke: #888;
     stroke-width: 1.5px;
+    stroke-linecap: round;
+    fill: none;
 }
 
 .edit-input {
@@ -57,7 +59,7 @@ body, html {
     z-index: 1000;
 }
 #imageOverlay img {
-    max-width: 90%;
-    max-height: 90%;
+    max-width: 95%;
+    max-height: 95%;
     box-shadow: 0 0 10px #000;
 }

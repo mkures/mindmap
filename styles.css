@@ -1,0 +1,43 @@
+body, html {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    font-family: sans-serif;
+}
+#toolbar {
+    padding: 4px;
+    background: #f0f0f0;
+    border-bottom: 1px solid #ccc;
+}
+#mindmap {
+    width: 100%;
+    height: calc(100% - 40px);
+    cursor: grab;
+}
+.node rect {
+    fill: #fff;
+    stroke: #333;
+    rx: 6;
+    ry: 6;
+}
+.node text {
+    pointer-events: none;
+    font-size: 14px;
+}
+.node.selected rect {
+    stroke: #ff6f59;
+    stroke-width: 2px;
+}
+
+.link {
+    stroke: #888;
+    stroke-width: 1.5px;
+}
+
+.edit-input {
+    position: absolute;
+    font-size: 14px;
+    box-sizing: border-box;
+    border: 1px solid #333;
+    padding: 2px;
+}

@@ -36,9 +36,21 @@ export function render(map, svg, selectedId) {
         if (node.color) rect.style.fill = node.color;
         g.appendChild(rect);
 
+        let offset = 10;
+        if (node.media && node.media.kind === 'image') {
+            const img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+            img.setAttribute('href', node.media.dataUrl);
+            img.setAttribute('width', node.media.width);
+            img.setAttribute('height', node.media.height);
+            img.setAttribute('x', 5);
+            img.setAttribute('y', (node.h - node.media.height) / 2);
+            g.appendChild(img);
+            offset += node.media.width + 5;
+        }
+
         const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        text.setAttribute('x', 10);
-        text.setAttribute('y', 25);
+        text.setAttribute('x', offset);
+        text.setAttribute('y', node.h / 2 + 5);
         text.textContent = node.text;
         g.appendChild(text);
 

@@ -1,4 +1,4 @@
-import { createEmptyMap, addChild, addSibling, deleteNode } from './model.js';
+import { createEmptyMap, addChild, addSibling, deleteNode, setNodeImage } from './model.js';
 import { layout } from './layout.js';
 import { render } from './render.js';
 
@@ -30,6 +30,11 @@ const addSiblingBtn = document.getElementById('addSiblingBtn');
 const deleteBtn = document.getElementById('deleteBtn');
 const newBtn = document.getElementById('newBtn');
 const fitBtn = document.getElementById('fitBtn');
+const imageBtn = document.getElementById('imageBtn');
+const saveBtn = document.getElementById('saveBtn');
+const loadBtn = document.getElementById('loadBtn');
+const imageInput = document.getElementById('imageInput');
+const loadInput = document.getElementById('loadInput');
 
 addChildBtn.onclick = () => {
     const id = addChild(map, selectedId);
@@ -60,6 +65,79 @@ newBtn.onclick = () => {
     update();
     startEditing(selectedId);
 };
+
+imageBtn.onclick = () => {
+    imageInput.value = '';
+    imageInput.click();
+};
+
+imageInput.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+        const img = new Image();
+        img.onload = () => {
+            const max = 128;
+            let w = img.width;
+            let h = img.height;
+            let scale = 1;
+            if (w > h && w > max) scale = max / w;
+            else if (h > w && h > max) scale = max / h;
+            w = Math.round(w * scale);
+            h = Math.round(h * scale);
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+            const dataUrl = canvas.toDataURL('image/png');
+            setNodeImage(map, selectedId, {
+                kind: 'image',
+                dataUrl,
+                width: w,
+                height: h,
+                naturalWidth: img.width,
+                naturalHeight: img.height
+            });
+            update();
+        };
+        img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+});
+
+saveBtn.onclick = () => {
+    const json = JSON.stringify(map, null, 2);
+    const blob = new Blob([json], {type: 'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${map.title}-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+};
+
+loadBtn.onclick = () => {
+    loadInput.value = '';
+    loadInput.click();
+};
+
+loadInput.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+        try {
+            map = JSON.parse(ev.target.result);
+            selectedId = map.rootId;
+            pan = {x:0,y:0,scale:1};
+            update();
+        } catch (err) {
+            alert('Invalid JSON');
+        }
+    };
+    reader.readAsText(file);
+});
 
 fitBtn.onclick = fitToScreen;
 

@@ -49,3 +49,10 @@ export function deleteNode(map, nodeId) {
     removeSubtree(nodeId);
     map.updatedAt = Date.now();
 }
+
+export function setNodeImage(map, nodeId, media) {
+    const node = map.nodes[nodeId];
+    if (!node) return;
+    if (media) node.media = media; else delete node.media;
+    map.updatedAt = Date.now();
+}

@@ -314,6 +314,19 @@ function startEditing(id, initial) {
     editingInput.addEventListener('keydown', e => {
         if (e.key === 'Enter') {
             finishEditing();
+        } else if (e.key === 'Tab') {
+            e.preventDefault();
+            const currentId = editingId;
+            finishEditing();
+            if (currentId) {
+                selectedId = currentId;
+                const id = addChild(map, currentId);
+                if (id) {
+                    selectedId = id;
+                    update();
+                    startEditing(id);
+                }
+            }
         }
     });
     editingInput.addEventListener('blur', finishEditing);

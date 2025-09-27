@@ -9,3 +9,5 @@ Click **Save JSON** to download the map with images embedded and **Load JSON**
 to restore a saved file. Drag the background to pan and use the mouse wheel to
 zoom. Branches from the root are automatically colored and children are laid
 out above and below their parent for readability.
+
+Deploy to cloudflare

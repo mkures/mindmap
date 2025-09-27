@@ -6,6 +6,7 @@ export function render(map, svg, selectedId) {
     const nodeGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     nodeGroup.id = 'nodes';
     svg.appendChild(nodeGroup);
+    const settings = map.settings || {};
 
     // draw links
     Object.values(map.nodes).forEach(node => {
@@ -50,7 +51,15 @@ export function render(map, svg, selectedId) {
 
         const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         text.setAttribute('x', offset);
-        text.setAttribute('y', node.h / 2 + 5);
+        text.setAttribute('y', node.h / 2);
+        text.setAttribute('dominant-baseline', 'middle');
+        text.setAttribute('alignment-baseline', 'middle');
+        if (settings.fontFamily) {
+            text.setAttribute('font-family', settings.fontFamily);
+        }
+        if (settings.fontSize) {
+            text.setAttribute('font-size', settings.fontSize);
+        }
         text.textContent = node.text;
         g.appendChild(text);
 

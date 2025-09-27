@@ -1,4 +1,4 @@
-import { createEmptyMap, addChild, addSibling, deleteNode, setNodeImage } from './model.js';
+import { createEmptyMap, addChild, addSibling, deleteNode, setNodeImage, ensureSettings, DEFAULTS } from './model.js';
 import { layout } from './layout.js';
 import { render } from './render.js';
 
@@ -9,9 +9,13 @@ const viewport = document.getElementById('viewport');
 let pan = {x:0, y:0, scale:1};
 
 function update() {
+    ensureSettings(map);
     layout(map);
     render(map, viewport, selectedId);
     viewport.setAttribute('transform', `translate(${pan.x},${pan.y}) scale(${pan.scale})`);
+    if (map.settings && map.settings.fontFamily) {
+        document.body.style.fontFamily = map.settings.fontFamily;
+    }
 }
 update();
 
@@ -35,6 +39,15 @@ const saveBtn = document.getElementById('saveBtn');
 const loadBtn = document.getElementById('loadBtn');
 const imageInput = document.getElementById('imageInput');
 const loadInput = document.getElementById('loadInput');
+const configBtn = document.getElementById('configBtn');
+const configModal = document.getElementById('configModal');
+const configBackdrop = document.getElementById('modalBackdrop');
+const configForm = document.getElementById('configForm');
+const levelColorsContainer = document.getElementById('levelColorsContainer');
+const addLevelColorBtn = document.getElementById('addLevelColorBtn');
+const fontFamilyInput = document.getElementById('fontFamilyInput');
+const fontSizeInput = document.getElementById('fontSizeInput');
+const configCancelBtn = document.getElementById('configCancelBtn');
 
 addChildBtn.onclick = () => {
     const id = addChild(map, selectedId);
@@ -129,6 +142,7 @@ loadInput.addEventListener('change', e => {
     reader.onload = ev => {
         try {
             map = JSON.parse(ev.target.result);
+            ensureSettings(map);
             selectedId = map.rootId;
             pan = {x:0,y:0,scale:1};
             update();
@@ -140,6 +154,65 @@ loadInput.addEventListener('change', e => {
 });
 
 fitBtn.onclick = fitToScreen;
+configBtn.onclick = openConfig;
+
+function openConfig() {
+    ensureSettings(map);
+    populateColorInputs();
+    fontFamilyInput.value = map.settings.fontFamily || DEFAULTS.fontFamily;
+    fontSizeInput.value = map.settings.fontSize || DEFAULTS.fontSize;
+    configModal.classList.remove('hidden');
+    configBackdrop.classList.remove('hidden');
+}
+
+function closeConfig() {
+    configModal.classList.add('hidden');
+    configBackdrop.classList.add('hidden');
+}
+
+function populateColorInputs() {
+    levelColorsContainer.innerHTML = '';
+    map.settings.levelColors.forEach((color, index) => {
+        addColorInput(index, color);
+    });
+    if (!map.settings.levelColors.length) {
+        addColorInput(0, DEFAULTS.levelColors[0]);
+    }
+}
+
+function addColorInput(index, value) {
+    const row = document.createElement('div');
+    row.className = 'config-row';
+    const label = document.createElement('label');
+    label.textContent = `Niveau ${index}`;
+    const input = document.createElement('input');
+    input.type = 'color';
+    input.value = value || '#ffffff';
+    input.dataset.index = index;
+    row.appendChild(label);
+    row.appendChild(input);
+    levelColorsContainer.appendChild(row);
+}
+
+addLevelColorBtn.addEventListener('click', () => {
+    const nextIndex = levelColorsContainer.querySelectorAll('input[type="color"]').length;
+    addColorInput(nextIndex, DEFAULTS.levelColors[nextIndex % DEFAULTS.levelColors.length] || '#ffffff');
+});
+
+configBackdrop.addEventListener('click', closeConfig);
+configCancelBtn.addEventListener('click', closeConfig);
+
+configForm.addEventListener('submit', e => {
+    e.preventDefault();
+    const colorInputs = levelColorsContainer.querySelectorAll('input[type="color"]');
+    const colors = Array.from(colorInputs).map(input => input.value);
+    map.settings.levelColors = colors.length ? colors : [...DEFAULTS.levelColors];
+    map.settings.fontFamily = fontFamilyInput.value || DEFAULTS.fontFamily;
+    const parsed = parseInt(fontSizeInput.value, 10);
+    map.settings.fontSize = Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULTS.fontSize;
+    closeConfig();
+    update();
+});
 
 function fitToScreen() {
     const bbox = viewport.getBBox();
@@ -226,6 +299,10 @@ function startEditing(id, initial) {
     editingInput.type = 'text';
     editingInput.className = 'edit-input';
     editingInput.value = initial !== undefined ? initial : map.nodes[id].text;
+    if (map.settings) {
+        if (map.settings.fontFamily) editingInput.style.fontFamily = map.settings.fontFamily;
+        if (map.settings.fontSize) editingInput.style.fontSize = map.settings.fontSize + 'px';
+    }
     positionEditor(bbox);
     document.body.appendChild(editingInput);
     editingInput.focus();
@@ -265,6 +342,10 @@ update = function() {
     originalUpdate();
     if (editingInput && editingId) {
         const nodeEl = viewport.querySelector(`.node[data-id="${editingId}"]`);
+        if (map.settings) {
+            if (map.settings.fontFamily) editingInput.style.fontFamily = map.settings.fontFamily;
+            if (map.settings.fontSize) editingInput.style.fontSize = map.settings.fontSize + 'px';
+        }
         if (nodeEl) positionEditor(nodeEl.getBoundingClientRect());
     }
 };

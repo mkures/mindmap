@@ -15,12 +15,37 @@
         <button id="saveBtn">Save JSON</button>
         <button id="loadBtn">Load JSON</button>
         <button id="fitBtn">Fit</button>
+        <button id="configBtn">Configuration</button>
         <input type="file" id="imageInput" accept="image/*" style="display:none">
         <input type="file" id="loadInput" accept="application/json" style="display:none">
     </div>
     <svg id="mindmap" width="100%" height="100%">
         <g id="viewport"></g>
     </svg>
+    <div id="modalBackdrop" class="modal-backdrop hidden"></div>
+    <div id="configModal" class="modal hidden">
+        <div class="modal-content">
+            <h2>Configuration</h2>
+            <form id="configForm">
+                <fieldset>
+                    <legend>Couleurs de niveaux</legend>
+                    <div id="levelColorsContainer" class="level-colors"></div>
+                    <button type="button" id="addLevelColorBtn" class="secondary">Ajouter une couleur</button>
+                </fieldset>
+                <fieldset>
+                    <legend>Police</legend>
+                    <label for="fontFamilyInput">Fonte de base</label>
+                    <input type="text" id="fontFamilyInput" placeholder="sans-serif">
+                    <label for="fontSizeInput">Taille de base</label>
+                    <input type="number" id="fontSizeInput" min="8" max="48">
+                </fieldset>
+                <div class="modal-actions">
+                    <button type="button" id="configCancelBtn" class="secondary">Annuler</button>
+                    <button type="submit">Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
     <script type="module" src="src/main.js"></script>
 </body>
 </html>

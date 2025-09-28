@@ -4,6 +4,49 @@ body, html {
     height: 100%;
     font-family: sans-serif;
 }
+#appContainer {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+#mapHeader {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    background: #ffffff;
+    border-bottom: 1px solid #dcdcdc;
+}
+
+#mapHeader input[type="text"] {
+    flex: 1;
+    font-size: 18px;
+    font-weight: 600;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 6px 10px;
+}
+
+.status {
+    font-size: 13px;
+    color: #666;
+}
+
+.status.saving {
+    color: #3366ff;
+}
+
+.status.error {
+    color: #d7263d;
+    font-weight: 600;
+}
+
+.map-header-actions {
+    display: flex;
+    gap: 8px;
+}
+
 #toolbar {
     padding: 4px;
     background: #f0f0f0;
@@ -14,7 +57,7 @@ body, html {
 }
 #mindmap {
     width: 100%;
-    height: calc(100% - 40px);
+    flex: 1;
     cursor: grab;
 }
 
@@ -170,4 +213,114 @@ body.dragging-node {
     font-weight: 600;
     opacity: 0.95;
     z-index: 20;
+}
+
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(15, 23, 42, 0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 30;
+}
+
+.auth-dialog {
+    background: #ffffff;
+    padding: 32px;
+    border-radius: 12px;
+    max-width: 420px;
+    width: 90%;
+    box-shadow: 0 16px 32px rgba(0,0,0,0.25);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.auth-dialog h1 {
+    margin: 0;
+    font-size: 24px;
+}
+
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.auth-form input[type="password"] {
+    padding: 8px 10px;
+    font-size: 16px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+}
+
+.auth-form button,
+#cloudflareLoginBtn {
+    padding: 8px 12px;
+    font-size: 15px;
+    cursor: pointer;
+    border-radius: 6px;
+    border: none;
+    background: #2563eb;
+    color: white;
+}
+
+#cloudflareLoginBtn.secondary {
+    background: #f0f0f0;
+    color: #111827;
+}
+
+.auth-hint {
+    font-size: 13px;
+    color: #555;
+}
+
+.map-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.map-list button {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    background: #fafafa;
+    cursor: pointer;
+}
+
+.map-list button:hover {
+    border-color: #2563eb;
+    background: #eef2ff;
+}
+
+.map-list .map-title {
+    font-weight: 600;
+}
+
+.map-list .map-meta {
+    font-size: 12px;
+    color: #666;
+}
+
+.map-list-empty {
+    font-size: 14px;
+    color: #666;
+}
+
+.map-list-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.map-list-actions button {
+    padding: 6px 12px;
 }

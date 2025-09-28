@@ -35,6 +35,8 @@ body, html {
 .link {
     stroke: #888;
     stroke-width: 1.5px;
+    fill: none;
+    stroke-linecap: round;
 }
 
 .edit-input {

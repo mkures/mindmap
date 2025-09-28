@@ -7,10 +7,15 @@ let selectedId = map.rootId;
 const viewport = document.getElementById('viewport');
 
 let pan = {x:0, y:0, scale:1};
+let needsCenterOnRoot = true;
 
 function update() {
     ensureSettings(map);
     layout(map);
+    if (needsCenterOnRoot) {
+        centerOnRoot();
+        needsCenterOnRoot = false;
+    }
     render(map, viewport, selectedId);
     viewport.setAttribute('transform', `translate(${pan.x},${pan.y}) scale(${pan.scale})`);
     if (map.settings && map.settings.fontFamily) {
@@ -18,6 +23,18 @@ function update() {
     }
 }
 update();
+
+function centerOnRoot() {
+    const svg = document.getElementById('mindmap');
+    if (!svg) return;
+    const root = map.nodes[map.rootId];
+    if (!root) return;
+    pan.scale = 1;
+    const centerX = root.x + root.w / 2;
+    const centerY = root.y + root.h / 2;
+    pan.x = svg.clientWidth / 2 - centerX;
+    pan.y = svg.clientHeight / 2 - centerY;
+}
 
 // selection handling
 viewport.addEventListener('click', e => {
@@ -75,6 +92,7 @@ newBtn.onclick = () => {
     map = createEmptyMap();
     selectedId = map.rootId;
     pan = {x:0,y:0,scale:1};
+    needsCenterOnRoot = true;
     update();
     startEditing(selectedId);
 };

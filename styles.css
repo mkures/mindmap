@@ -17,6 +17,14 @@ body, html {
     height: calc(100% - 40px);
     cursor: grab;
 }
+
+body.dragging-node #mindmap {
+    cursor: grabbing;
+}
+
+body.dragging-node {
+    user-select: none;
+}
 .node rect {
     fill: #fff;
     stroke: #333;
@@ -29,6 +37,15 @@ body, html {
 }
 .node.selected rect {
     stroke: #ff6f59;
+    stroke-width: 2px;
+}
+
+.node.drag-origin {
+    opacity: 0.3;
+}
+
+.node.drop-target rect {
+    stroke: #3366ff;
     stroke-width: 2px;
 }
 
@@ -136,4 +153,21 @@ body, html {
 
 .modal button.secondary {
     background: #f0f0f0;
+}
+
+.drag-preview {
+    position: fixed;
+    pointer-events: none;
+    border-radius: 8px;
+    border: 1px solid rgba(0,0,0,0.2);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 12px;
+    box-sizing: border-box;
+    color: #000;
+    font-weight: 600;
+    opacity: 0.95;
+    z-index: 20;
 }

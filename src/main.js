@@ -1,13 +1,28 @@
-import { createEmptyMap, addChild, addSibling, deleteNode, setNodeImage, ensureSettings, DEFAULTS } from './model.js';
+import {
+    createEmptyMap,
+    addChild,
+    addSibling,
+    deleteNode,
+    setNodeImage,
+    ensureSettings,
+    DEFAULTS,
+    reparentNode,
+    moveSibling,
+    isDescendant
+} from './model.js';
 import { layout } from './layout.js';
 import { render } from './render.js';
 
 let map = createEmptyMap();
 let selectedId = map.rootId;
 const viewport = document.getElementById('viewport');
+const svgElement = document.getElementById('mindmap');
 
 let pan = {x:0, y:0, scale:1};
 let needsCenterOnRoot = true;
+let dragState = null;
+let dropTargetId = null;
+let suppressClick = false;
 
 function update() {
     ensureSettings(map);
@@ -25,19 +40,22 @@ function update() {
 update();
 
 function centerOnRoot() {
-    const svg = document.getElementById('mindmap');
-    if (!svg) return;
+    if (!svgElement) return;
     const root = map.nodes[map.rootId];
     if (!root) return;
     pan.scale = 1;
     const centerX = root.x + root.w / 2;
     const centerY = root.y + root.h / 2;
-    pan.x = svg.clientWidth / 2 - centerX;
-    pan.y = svg.clientHeight / 2 - centerY;
+    pan.x = svgElement.clientWidth / 2 - centerX;
+    pan.y = svgElement.clientHeight / 2 - centerY;
 }
 
 // selection handling
 viewport.addEventListener('click', e => {
+    if (suppressClick) {
+        suppressClick = false;
+        return;
+    }
     const g = e.target.closest('.node');
     if (g) {
         selectedId = g.dataset.id;
@@ -234,9 +252,9 @@ configForm.addEventListener('submit', e => {
 
 function fitToScreen() {
     const bbox = viewport.getBBox();
-    const svg = document.getElementById('mindmap');
-    const w = svg.clientWidth;
-    const h = svg.clientHeight;
+    if (!svgElement) return;
+    const w = svgElement.clientWidth;
+    const h = svgElement.clientHeight;
     const scale = Math.min(w / (bbox.width + 40), h / (bbox.height + 40));
     const tx = -bbox.x * scale + (w - bbox.width * scale) / 2;
     const ty = -bbox.y * scale + (h - bbox.height * scale) / 2;
@@ -248,12 +266,23 @@ function fitToScreen() {
 let isPanning = false;
 let start = {x:0,y:0};
 
-document.getElementById('mindmap').addEventListener('mousedown', e => {
+svgElement.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    const node = e.target.closest('.node');
+    if (node) {
+        e.preventDefault();
+        startNodeDrag(node, e);
+        return;
+    }
     isPanning = true;
     start = { x: e.clientX - pan.x, y: e.clientY - pan.y };
 });
 
 document.addEventListener('mousemove', e => {
+    if (dragState) {
+        updateNodeDrag(e);
+        return;
+    }
     if (isPanning) {
         pan.x = e.clientX - start.x;
         pan.y = e.clientY - start.y;
@@ -261,16 +290,134 @@ document.addEventListener('mousemove', e => {
     }
 });
 
-document.addEventListener('mouseup', () => {
+document.addEventListener('mouseup', e => {
+    if (dragState) {
+        endNodeDrag(e);
+    }
     isPanning = false;
 });
 
-document.getElementById('mindmap').addEventListener('wheel', e => {
+svgElement.addEventListener('wheel', e => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? -0.1 : 0.1;
     pan.scale = Math.min(2, Math.max(0.25, pan.scale + delta));
     update();
 });
+
+function startNodeDrag(nodeEl, event) {
+    const id = nodeEl.dataset.id;
+    if (!id || id === map.rootId) return;
+    if (editingInput) return;
+    const rect = nodeEl.getBoundingClientRect();
+    dragState = {
+        id,
+        originEl: nodeEl,
+        offsetX: event.clientX - rect.left,
+        offsetY: event.clientY - rect.top,
+        startX: event.clientX,
+        startY: event.clientY,
+        hasMoved: false,
+        preview: null
+    };
+}
+
+function updateNodeDrag(event) {
+    if (!dragState) return;
+    if (!dragState.hasMoved) {
+        const dx = Math.abs(event.clientX - dragState.startX);
+        const dy = Math.abs(event.clientY - dragState.startY);
+        if (dx > 3 || dy > 3) {
+            dragState.hasMoved = true;
+            ensureDragPreview();
+        }
+    }
+    if (!dragState.hasMoved) return;
+    event.preventDefault();
+    positionDragPreview(event.clientX, event.clientY);
+    const el = document.elementFromPoint(event.clientX, event.clientY);
+    const node = el ? el.closest('.node') : null;
+    if (!node) {
+        clearDropTarget();
+        return;
+    }
+    const targetId = node.dataset.id;
+    if (!targetId || targetId === dragState.id) {
+        clearDropTarget();
+        return;
+    }
+    if (isDescendant(map, dragState.id, targetId)) {
+        clearDropTarget();
+        return;
+    }
+    setDropTarget(node, targetId);
+}
+
+function endNodeDrag() {
+    if (!dragState) return;
+    const { preview, originEl, id, hasMoved } = dragState;
+    if (preview && preview.parentNode) {
+        preview.parentNode.removeChild(preview);
+    }
+    if (originEl && originEl.classList) {
+        originEl.classList.remove('drag-origin');
+    }
+    document.body.classList.remove('dragging-node');
+    const targetId = dropTargetId;
+    clearDropTarget();
+    dragState = null;
+    if (targetId && reparentNode(map, id, targetId)) {
+        selectedId = id;
+        update();
+    } else if (hasMoved) {
+        update();
+    }
+    suppressClick = hasMoved;
+}
+
+function positionDragPreview(clientX, clientY) {
+    if (!dragState || !dragState.preview) return;
+    const x = clientX - dragState.offsetX;
+    const y = clientY - dragState.offsetY;
+    dragState.preview.style.left = `${x}px`;
+    dragState.preview.style.top = `${y}px`;
+}
+
+function clearDropTarget() {
+    if (!dropTargetId) return;
+    const prev = viewport.querySelector(`.node[data-id="${dropTargetId}"]`);
+    if (prev) {
+        prev.classList.remove('drop-target');
+    }
+    dropTargetId = null;
+}
+
+function setDropTarget(nodeEl, id) {
+    if (dropTargetId === id) return;
+    clearDropTarget();
+    dropTargetId = id;
+    if (nodeEl) {
+        nodeEl.classList.add('drop-target');
+    }
+}
+
+function ensureDragPreview() {
+    if (!dragState || dragState.preview) return;
+    const { originEl, id, startX, startY } = dragState;
+    const rect = originEl.getBoundingClientRect();
+    const preview = document.createElement('div');
+    preview.className = 'drag-preview';
+    preview.style.width = rect.width + 'px';
+    preview.style.height = rect.height + 'px';
+    preview.style.backgroundColor = map.nodes[id].color || '#ffffff';
+    preview.style.fontFamily = map.settings?.fontFamily || DEFAULTS.fontFamily;
+    preview.style.fontSize = (map.settings?.fontSize || DEFAULTS.fontSize) + 'px';
+    preview.textContent = map.nodes[id].text;
+    dragState.preview = preview;
+    document.body.appendChild(preview);
+    originEl.classList.add('drag-origin');
+    document.body.classList.add('dragging-node');
+    positionDragPreview(startX, startY);
+}
 
 // keyboard shortcuts
 window.addEventListener('keydown', e => {
@@ -290,6 +437,11 @@ window.addEventListener('keydown', e => {
     } else if (e.key === 'F2') {
         e.preventDefault();
         startEditing(selectedId);
+    } else if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && e.shiftKey) {
+        e.preventDefault();
+        if (moveSibling(map, selectedId, e.key === 'ArrowUp' ? -1 : 1)) {
+            update();
+        }
     } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
         startEditing(selectedId, e.key);
         e.preventDefault();

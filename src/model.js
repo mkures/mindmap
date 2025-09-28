@@ -80,3 +80,46 @@ export function setNodeImage(map, nodeId, media) {
     if (media) node.media = media; else delete node.media;
     map.updatedAt = Date.now();
 }
+
+export function isDescendant(map, ancestorId, maybeDescendantId) {
+    if (ancestorId === maybeDescendantId) return true;
+    const node = map.nodes[ancestorId];
+    if (!node) return false;
+    for (const childId of node.children) {
+        if (childId === maybeDescendantId) return true;
+        if (isDescendant(map, childId, maybeDescendantId)) return true;
+    }
+    return false;
+}
+
+export function reparentNode(map, nodeId, newParentId) {
+    if (nodeId === map.rootId) return false;
+    const node = map.nodes[nodeId];
+    const newParent = map.nodes[newParentId];
+    if (!node || !newParent) return false;
+    if (node.parentId === newParentId) return false;
+    if (isDescendant(map, nodeId, newParentId)) return false;
+    const oldParent = map.nodes[node.parentId];
+    if (!oldParent) return false;
+    oldParent.children = oldParent.children.filter(id => id !== nodeId);
+    newParent.children.push(nodeId);
+    node.parentId = newParentId;
+    map.updatedAt = Date.now();
+    return true;
+}
+
+export function moveSibling(map, nodeId, offset) {
+    const node = map.nodes[nodeId];
+    if (!node) return false;
+    const parent = map.nodes[node.parentId];
+    if (!parent) return false;
+    const siblings = parent.children;
+    const index = siblings.indexOf(nodeId);
+    if (index === -1) return false;
+    const newIndex = index + offset;
+    if (newIndex < 0 || newIndex >= siblings.length) return false;
+    siblings.splice(index, 1);
+    siblings.splice(newIndex, 0, nodeId);
+    map.updatedAt = Date.now();
+    return true;
+}

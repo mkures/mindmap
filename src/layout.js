@@ -3,8 +3,14 @@ const NODE_H = 40;
 const H_GAP = 60;
 const V_GAP = 20;
 
+const FALLBACK_COLORS = ['#ffffff', '#ff6f59', '#f6bd60', '#43aa8b', '#577590', '#d7263d', '#06d6a0'];
+
 export function layout(map) {
     const heights = {};
+    const settings = map.settings || {};
+    const colors = Array.isArray(settings.levelColors) && settings.levelColors.length
+        ? settings.levelColors
+        : FALLBACK_COLORS;
 
     function measure(id) {
         const node = map.nodes[id];
@@ -27,6 +33,9 @@ export function layout(map) {
 
     function place(id, depth, centerY) {
         const node = map.nodes[id];
+        node.depth = depth;
+        const colorIndex = Math.min(depth, colors.length - 1);
+        node.color = colors[colorIndex] || colors[colors.length - 1] || '#ffffff';
         node.x = depth * (NODE_W + H_GAP);
         node.y = centerY - node.h / 2;
         if (!node.children.length) return;

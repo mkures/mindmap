@@ -13,7 +13,9 @@ import {
 import { layout } from './layout.js';
 import { render } from './render.js';
 
-const MAPS_ENDPOINT = '/api/maps';
+const MAPS_ENDPOINT = 'https://hook.us1.make.com/1h4vrxpfuowna3gvc4xjbgbiqqo3ts1q';
+const API_KEY_HEADER_NAME = 'x-make-apikey';
+const API_KEY_VALUE = 'a2416722-6550-40ae-a5e1-da2678017617';
 const API_TOKEN_META_NAME = 'mindmap-api-token';
 const API_CONFIG_SCRIPT_ID = 'mindmapConfig';
 const LAST_MAP_STORAGE_KEY = 'mindmap:lastMapId';
@@ -805,15 +807,14 @@ async function loadMapById(id, { silentError = false } = {}) {
     if (!ensureRemoteEnabled({ silent: silentError })) return false;
     try {
         const resp = await fetch(`${MAPS_ENDPOINT}?id=${encodeURIComponent(id)}`, {
-            headers: getAuthHeaders(),
-            credentials: 'include'
+            headers: getAuthHeaders()
         });
         if (resp.status === 401 || resp.status === 403) {
-            disableRemote('Accès refusé par l’API distante. Vérifiez le token transmis via Cloudflare.');
+            disableRemote('Accès refusé par l’API distante. Vérifiez la clé API configurée.');
             throw new Error('Accès refusé par l’API distante.');
         }
         if (resp.status === 404) {
-            disableRemote('Endpoint /api/maps introuvable sur le serveur.');
+            disableRemote('Endpoint distant introuvable.');
             throw new Error('API distante introuvable.');
         }
         if (!resp.ok) {
@@ -844,15 +845,14 @@ async function fetchMapSummaries() {
     if (!ensureRemoteEnabled({ silent: true })) return [];
     try {
         const resp = await fetch(`${MAPS_ENDPOINT}?id=0`, {
-            headers: getAuthHeaders(),
-            credentials: 'include'
+            headers: getAuthHeaders()
         });
         if (resp.status === 401 || resp.status === 403) {
-            disableRemote('Accès refusé par l’API distante. Vérifiez le token transmis via Cloudflare.');
+            disableRemote('Accès refusé par l’API distante. Vérifiez la clé API configurée.');
             return [];
         }
         if (resp.status === 404) {
-            disableRemote('Endpoint /api/maps introuvable sur le serveur.');
+            disableRemote('Endpoint distant introuvable.');
             return [];
         }
         if (!resp.ok) return [];
@@ -869,7 +869,7 @@ async function fetchMapSummaries() {
 }
 
 function getAuthHeaders() {
-    const headers = { 'Content-Type': 'application/json' };
+    const headers = { 'Content-Type': 'application/json', [API_KEY_HEADER_NAME]: API_KEY_VALUE };
     if (apiToken) {
         headers['Authorization'] = `Bearer ${apiToken}`;
     }
@@ -924,15 +924,14 @@ async function runAutosave() {
         const resp = await fetch(MAPS_ENDPOINT, {
             method: 'POST',
             headers: getAuthHeaders(),
-            credentials: 'include',
             body: JSON.stringify(payload)
         });
         if (resp.status === 401 || resp.status === 403) {
-            disableRemote('Accès refusé par l’API distante. Vérifiez le token transmis via Cloudflare.');
+            disableRemote('Accès refusé par l’API distante. Vérifiez la clé API configurée.');
             throw new Error('Accès refusé par l’API distante.');
         }
         if (resp.status === 404) {
-            disableRemote('Endpoint /api/maps introuvable sur le serveur.');
+            disableRemote('Endpoint distant introuvable.');
             throw new Error('API distante introuvable.');
         }
         if (!resp.ok) {

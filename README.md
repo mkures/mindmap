@@ -17,8 +17,14 @@ or any other authentication proxy. The editor no longer displays a custom login
 overlay—the page is immediately visible and relies on Cloudflare to block
 anonymous visitors before it loads.
 
-If your persistence API expects an additional bearer token, expose it to the
-front-end through one of the supported injection points:
+For the built-in persistence, the front-end now calls the Make webhook at
+`https://hook.us1.make.com/1h4vrxpfuowna3gvc4xjbgbiqqo3ts1q` and injects the
+required header `x-make-apikey: a2416722-6550-40ae-a5e1-da2678017617`. Because
+Cloudflare restricts access to the page, it is acceptable to embed this key in
+the client.
+
+If you later switch to a different backend that expects an additional bearer
+token, expose it to the front-end through one of the supported injection points:
 
 * `window.MINDMAP_API_TOKEN` – define a global variable in an inline script.
 * `window.__ENV.MINDMAP_API_TOKEN` – helpful when Cloudflare Pages injects a
@@ -29,7 +35,8 @@ front-end through one of the supported injection points:
   embed JSON configuration.
 
 Any of these methods keep the secret available only to authenticated users, and
-the client will include the token as a `Bearer` header when calling the API.
+the client will include the token as a `Bearer` header when calling the API in
+addition to the Make key.
 
 ## Realtime persistence API
 
@@ -37,7 +44,7 @@ All changes are automatically persisted to MongoDB through a REST API. The
 front-end expects the following contract; adapt the implementation language to
 your stack of choice:
 
-### `GET /api/maps?id=0`
+### `GET https://hook.us1.make.com/1h4vrxpfuowna3gvc4xjbgbiqqo3ts1q?id=0`
 
 Returns the list of stored maps. Respond with either an array or an object with
 the `maps` property. Each entry should include at least:
@@ -53,14 +60,14 @@ the `maps` property. Each entry should include at least:
 ]
 ```
 
-### `GET /api/maps?id=<mapId>`
+### `GET https://hook.us1.make.com/1h4vrxpfuowna3gvc4xjbgbiqqo3ts1q?id=<mapId>`
 
 Returns the full JSON of a map and its metadata. The client understands either
 `{ "map": { ... } }`, `{ "data": { ... } }` or the map object directly. The
 `map` payload is the same structure that the front-end uses internally (root id
 plus the `nodes` dictionary, `settings`, etc.).
 
-### `POST /api/maps`
+### `POST https://hook.us1.make.com/1h4vrxpfuowna3gvc4xjbgbiqqo3ts1q`
 
 Persists the provided map. The client sends the body:
 

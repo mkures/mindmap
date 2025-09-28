@@ -458,6 +458,7 @@ viewport.addEventListener('dblclick', e => {
 
 let editingInput = null;
 let editingId = null;
+let editingOriginalText = null;
 
 function startEditing(id, initial) {
     if (editingInput) return;
@@ -468,7 +469,8 @@ function startEditing(id, initial) {
     editingInput = document.createElement('input');
     editingInput.type = 'text';
     editingInput.className = 'edit-input';
-    editingInput.value = initial !== undefined ? initial : map.nodes[id].text;
+    editingOriginalText = map.nodes[id].text;
+    editingInput.value = initial !== undefined ? initial : editingOriginalText;
     if (map.settings) {
         if (map.settings.fontFamily) editingInput.style.fontFamily = map.settings.fontFamily;
         if (map.settings.fontSize) editingInput.style.fontSize = map.settings.fontSize + 'px';
@@ -497,6 +499,12 @@ function startEditing(id, initial) {
                     startEditing(id);
                 }
             }
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            if (editingOriginalText !== null) {
+                editingInput.value = editingOriginalText;
+            }
+            finishEditing();
         }
     });
     editingInput.addEventListener('blur', finishEditing);
@@ -516,6 +524,7 @@ function finishEditing() {
     document.body.removeChild(editingInput);
     editingInput = null;
     editingId = null;
+    editingOriginalText = null;
     update();
 }
 

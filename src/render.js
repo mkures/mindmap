@@ -6,18 +6,21 @@ export function render(map, svg, selectedId) {
     const nodeGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     nodeGroup.id = 'nodes';
     svg.appendChild(nodeGroup);
+    const settings = map.settings || {};
 
     // draw links
     Object.values(map.nodes).forEach(node => {
         if (node.parentId) {
             const parent = map.nodes[node.parentId];
-            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            line.classList.add('link');
-            line.setAttribute('x1', parent.x + parent.w);
-            line.setAttribute('y1', parent.y + parent.h / 2);
-            line.setAttribute('x2', node.x);
-            line.setAttribute('y2', node.y + node.h / 2);
-            linkGroup.appendChild(line);
+            const x1 = parent.x + parent.w;
+            const y1 = parent.y + parent.h / 2;
+            const x2 = node.x;
+            const y2 = node.y + node.h / 2;
+            const curvature = Math.max(40, Math.abs(x2 - x1) / 2);
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.classList.add('link');
+            path.setAttribute('d', `M${x1},${y1} C${x1 + curvature},${y1} ${x2 - curvature},${y2} ${x2},${y2}`);
+            linkGroup.appendChild(path);
         }
     });
 
@@ -50,7 +53,15 @@ export function render(map, svg, selectedId) {
 
         const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         text.setAttribute('x', offset);
-        text.setAttribute('y', node.h / 2 + 5);
+        text.setAttribute('y', node.h / 2);
+        text.setAttribute('dominant-baseline', 'middle');
+        text.setAttribute('alignment-baseline', 'middle');
+        if (settings.fontFamily) {
+            text.setAttribute('font-family', settings.fontFamily);
+        }
+        if (settings.fontSize) {
+            text.setAttribute('font-size', settings.fontSize);
+        }
         text.textContent = node.text;
         g.appendChild(text);
 

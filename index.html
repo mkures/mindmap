@@ -4,22 +4,13 @@
     <meta charset="UTF-8">
     <title>MindMap Minimal</title>
     <link rel="stylesheet" href="styles.css">
+    <!-- Optionally expose a bearer token for the persistence API via meta or script injection -->
+    <!-- <meta name="mindmap-api-token" content=""> -->
 </head>
 <body>
-    <div id="authOverlay" class="overlay hidden">
-        <div class="auth-dialog">
-            <h1>Connexion requise</h1>
-            <p id="authMessage">Connectez-vous avec votre compte autorisé pour accéder à la carte mentale.</p>
-            <button id="cloudflareLoginBtn" class="primary">Se connecter via Cloudflare</button>
-            <form id="passwordLoginForm" class="auth-form">
-                <label for="authPassword">Mot de passe de secours</label>
-                <input type="password" id="authPassword" autocomplete="current-password" placeholder="Mot de passe">
-                <button type="submit">Connexion</button>
-            </form>
-            <p class="auth-hint">Configurez Cloudflare Access pour protéger l'application et renvoyer une session via <code>/api/auth/session</code>. Le formulaire sert pour le développement local.</p>
-        </div>
-    </div>
-    <div id="appContainer" class="hidden">
+
+    <div id="appContainer">
+
         <div id="mapHeader">
             <input id="mapTitleInput" type="text" value="MindMap" autocomplete="off" spellcheck="false">
             <div id="saveStatus" class="status">Sauvegarde en attente…</div>

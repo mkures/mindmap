@@ -10,19 +10,35 @@ to restore a saved file. Drag the background to pan and use the mouse wheel to
 zoom. Branches from the root are automatically colored and children are laid
 out above and below their parent for readability.
 
-## Authentication & Cloudflare Access
 
-The UI now requires authentication before the editor is displayed. When served
-behind [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/)
-configure an application that enforces Google Workspace (or personal Gmail)
-logins. Cloudflare will inject an `CF-Access-Jwt-Assertion` header for
-authenticated requests. The backend described below should validate that token
-and return a signed session payload via `GET /api/auth/session`.
+## Cloudflare Access & API configuration
 
-For local development (or while your backend is not yet wired to Cloudflare)
-use the fallback password form exposed in the overlay. Implement
-`POST /api/auth/login` to accept a password, create a session cookie and return
-the same JSON payload as the session endpoint.
+Place the application behind [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/)
+or any other authentication proxy. The editor no longer displays a custom login
+overlay—the page is immediately visible and relies on Cloudflare to block
+anonymous visitors before it loads.
+
+For the built-in persistence, the front-end now calls the Make webhook at
+`https://hook.us1.make.com/1h4vrxpfuowna3gvc4xjbgbiqqo3ts1q` and injects the
+required header `x-make-apikey: a2416722-6550-40ae-a5e1-da2678017617`. Because
+Cloudflare restricts access to the page, it is acceptable to embed this key in
+the client.
+
+If you later switch to a different backend that expects an additional bearer
+token, expose it to the front-end through one of the supported injection points:
+
+* `window.MINDMAP_API_TOKEN` – define a global variable in an inline script.
+* `window.__ENV.MINDMAP_API_TOKEN` – helpful when Cloudflare Pages injects a
+  JSON blob of environment variables.
+* `<meta name="mindmap-api-token" content="...">` – add the token to the head.
+* `<body data-mindmap-api-token="...">` – attach it as a data attribute.
+* `<script id="mindmapConfig" type="application/json">{"apiToken":"..."}</script>` –
+  embed JSON configuration.
+
+Any of these methods keep the secret available only to authenticated users, and
+the client will include the token as a `Bearer` header when calling the API in
+addition to the Make key.
+
 
 ## Realtime persistence API
 
@@ -30,36 +46,9 @@ All changes are automatically persisted to MongoDB through a REST API. The
 front-end expects the following contract; adapt the implementation language to
 your stack of choice:
 
-### `GET /api/auth/session`
 
-* Validates the current Cloudflare Access token (or any other auth cookie) and
-  returns HTTP 200 with:
+### `GET https://hook.us1.make.com/1h4vrxpfuowna3gvc4xjbgbiqqo3ts1q?id=0`
 
-  ```json
-  {
-    "token": "<bearer token forwarded by the client>",
-    "user": { "email": "you@example.com", "name": "Your Name" },
-    "loginUrl": "https://<your-domain>/.well-known/cfaccess/..."
-  }
-  ```
-
-* When the user is not authenticated, respond with **401** and optionally the
-  `loginUrl` for the Cloudflare Access flow:
-
-  ```json
-  { "loginUrl": "https://<domain>/cdn-cgi/access/login" }
-  ```
-
-The `token` value is forwarded as a Bearer token on every subsequent request to
-`/api/maps`.
-
-### `POST /api/auth/login`
-
-This endpoint is only used for the fallback password flow. Validate the posted
-password, create a session (cookie or JWT) and return the same JSON shape as
-`GET /api/auth/session`.
-
-### `GET /api/maps?id=0`
 
 Returns the list of stored maps. Respond with either an array or an object with
 the `maps` property. Each entry should include at least:
@@ -75,14 +64,17 @@ the `maps` property. Each entry should include at least:
 ]
 ```
 
-### `GET /api/maps?id=<mapId>`
+
+### `GET https://hook.us1.make.com/1h4vrxpfuowna3gvc4xjbgbiqqo3ts1q?id=<mapId>`
 
 Returns the full JSON of a map and its metadata. The client understands either
 `{ "map": { ... } }`, `{ "data": { ... } }` or the map object directly. The
 `map` payload is the same structure that the front-end uses internally (root id
 plus the `nodes` dictionary, `settings`, etc.).
 
-### `POST /api/maps`
+
+### `POST https://hook.us1.make.com/1h4vrxpfuowna3gvc4xjbgbiqqo3ts1q`
+
 
 Persists the provided map. The client sends the body:
 

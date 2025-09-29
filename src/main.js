@@ -18,12 +18,20 @@ const API_KEY_HEADER_NAME = 'x-make-apikey';
 const API_KEY_VALUE = 'a2416722-6550-40ae-a5e1-da2678017617';
 const API_TOKEN_META_NAME = 'mindmap-api-token';
 const API_CONFIG_SCRIPT_ID = 'mindmapConfig';
+
 const LAST_MAP_STORAGE_KEY = 'mindmap:lastMapId';
 const AUTOSAVE_DELAY = 1200;
 
 const viewport = document.getElementById('viewport');
 const svgElement = document.getElementById('mindmap');
 const appContainer = document.getElementById('appContainer');
+
+const authOverlay = document.getElementById('authOverlay');
+const authMessage = document.getElementById('authMessage');
+const cloudflareLoginBtn = document.getElementById('cloudflareLoginBtn');
+const passwordLoginForm = document.getElementById('passwordLoginForm');
+const authPasswordInput = document.getElementById('authPassword');
+
 const mapTitleInput = document.getElementById('mapTitleInput');
 const saveStatusEl = document.getElementById('saveStatus');
 const remoteLoadBtn = document.getElementById('remoteLoadBtn');
@@ -63,9 +71,11 @@ let editingInput = null;
 let editingId = null;
 let editingOriginalText = null;
 
+
 let apiToken = resolveApiToken();
 let remoteAvailable = true;
 let remoteDisabledMessage = '';
+
 
 let autosaveTimer = null;
 let autosavePending = false;
@@ -75,6 +85,7 @@ let lastSaveError = null;
 init();
 
 async function init() {
+
     updateSaveStatus();
     wireUI();
     apiToken = resolveApiToken();
@@ -103,6 +114,7 @@ function wireUI() {
     if (remoteSaveBtn) {
         remoteSaveBtn.addEventListener('click', () => {
             if (!ensureRemoteEnabled()) return;
+
             autosavePending = true;
             scheduleAutosave();
         });
@@ -110,7 +122,9 @@ function wireUI() {
 
     if (refreshMapListBtn) {
         refreshMapListBtn.addEventListener('click', () => {
+
             if (!ensureRemoteEnabled()) return;
+
             refreshMapList();
         });
     }
@@ -167,6 +181,7 @@ function wireUI() {
 
     if (newBtn) {
         newBtn.onclick = () => {
+
             const fresh = createEmptyMap();
             setCurrentMap(fresh, { center: true, remember: false });
             markMapChanged();
@@ -390,6 +405,7 @@ function wireUI() {
 let isPanning = false;
 let panStart = { x: 0, y: 0 };
 
+
 function showApp() {
     appContainer?.classList.remove('hidden');
 }
@@ -499,6 +515,7 @@ function updateDocumentTitle() {
     if (!map) return;
     document.title = map.title ? `${map.title} – MindMap` : 'MindMap';
 }
+
 
 function centerOnRoot() {
     if (!svgElement || !map) return;
@@ -751,7 +768,9 @@ function addColorInput(index, value) {
 }
 
 function openMapList() {
+
     if (!ensureRemoteEnabled()) return;
+
     mapListModal.classList.remove('hidden');
     modalBackdrop.classList.remove('hidden');
     refreshMapList();
@@ -761,6 +780,7 @@ function closeMapList() {
     mapListModal.classList.add('hidden');
     if (configModal.classList.contains('hidden')) {
         modalBackdrop.classList.add('hidden');
+
     }
 }
 
@@ -773,6 +793,7 @@ async function refreshMapList() {
         return;
     }
     renderMapList(list);
+
 }
 
 function renderMapList(list) {
@@ -804,6 +825,7 @@ function renderMapList(list) {
 
 async function loadMapById(id, { silentError = false } = {}) {
     if (!id) return false;
+
     if (!ensureRemoteEnabled({ silent: silentError })) return false;
     try {
         const resp = await fetch(`${MAPS_ENDPOINT}?id=${encodeURIComponent(id)}`, {
@@ -821,6 +843,7 @@ async function loadMapById(id, { silentError = false } = {}) {
             throw new Error(`Chargement impossible (${resp.status})`);
         }
         enableRemote();
+
         const data = await resp.json();
         const loadedMap = data?.map || data?.data || data;
         if (!loadedMap || !loadedMap.nodes) {
@@ -834,14 +857,17 @@ async function loadMapById(id, { silentError = false } = {}) {
         if (!silentError) {
             alert(err.message || 'Impossible de charger la carte.');
         }
+
         if (isNetworkError(err)) {
             disableRemote('Impossible de contacter l’API distante.');
         }
+
         return false;
     }
 }
 
 async function fetchMapSummaries() {
+
     if (!ensureRemoteEnabled({ silent: true })) return [];
     try {
         const resp = await fetch(`${MAPS_ENDPOINT}?id=0`, {
@@ -857,18 +883,23 @@ async function fetchMapSummaries() {
         }
         if (!resp.ok) return [];
         enableRemote();
+
         const data = await resp.json();
         return Array.isArray(data) ? data : (data?.maps || []);
     } catch (err) {
         console.error(err);
+
         if (isNetworkError(err)) {
             disableRemote('Impossible de contacter l’API distante.');
         }
+=======
+
         return [];
     }
 }
 
 function getAuthHeaders() {
+
     const headers = { 'Content-Type': 'application/json', [API_KEY_HEADER_NAME]: API_KEY_VALUE };
     if (apiToken) {
         headers['Authorization'] = `Bearer ${apiToken}`;
@@ -880,13 +911,16 @@ function markMapChanged() {
     if (!map) return;
     map.updatedAt = Date.now();
     autosavePending = true;
+
     if (remoteAvailable) {
+
         scheduleAutosave();
     }
     updateSaveStatus();
 }
 
 function scheduleAutosave() {
+
     if (!remoteAvailable) return;
     if (autosaveInFlight) return;
     cancelAutosaveTimer();
@@ -903,14 +937,17 @@ function cancelAutosaveTimer() {
 async function runAutosave() {
     if (!map || !remoteAvailable) {
         cancelAutosaveTimer();
+
         return;
     }
     if (autosaveInFlight) return;
     if (!autosavePending) {
+
         cancelAutosaveTimer();
         return;
     }
     cancelAutosaveTimer();
+
     autosaveInFlight = true;
     autosavePending = false;
     lastSaveError = null;
@@ -924,6 +961,7 @@ async function runAutosave() {
         const resp = await fetch(MAPS_ENDPOINT, {
             method: 'POST',
             headers: getAuthHeaders(),
+
             body: JSON.stringify(payload)
         });
         if (resp.status === 401 || resp.status === 403) {
@@ -938,6 +976,7 @@ async function runAutosave() {
             throw new Error(`Sauvegarde impossible (${resp.status})`);
         }
         enableRemote();
+
         const data = await resp.json().catch(() => ({}));
         if (data?.id) {
             map.id = data.id;
@@ -954,6 +993,7 @@ async function runAutosave() {
         console.error(err);
         lastSaveError = err;
         autosavePending = true;
+
         if (isNetworkError(err)) {
             disableRemote('Impossible de contacter l’API distante.');
         }
@@ -961,6 +1001,7 @@ async function runAutosave() {
         autosaveInFlight = false;
         updateSaveStatus();
         if (autosavePending && remoteAvailable) {
+
             scheduleAutosave();
         }
     }
@@ -969,8 +1010,10 @@ async function runAutosave() {
 function updateSaveStatus() {
     if (!saveStatusEl) return;
     saveStatusEl.classList.remove('saving', 'error');
+
     if (!remoteAvailable) {
         saveStatusEl.textContent = remoteDisabledMessage || 'Sauvegarde automatique indisponible';
+
         saveStatusEl.classList.add('error');
         return;
     }
@@ -1029,3 +1072,4 @@ function resolveApiToken() {
 function isNetworkError(err) {
     return err && err.name === 'TypeError';
 }
+

@@ -11,6 +11,7 @@ import {
     moveSibling,
     isDescendant
 } from './model.js';
+import { validateMapStructure } from './validation.js';
 import { layout } from './layout.js';
 import { render } from './render.js';
 
@@ -250,10 +251,14 @@ function wireUI() {
             reader.onload = ev => {
                 try {
                     const parsed = JSON.parse(ev.target.result);
-                    ensureSettings(parsed);
+                    const { valid, reason } = validateMapStructure(parsed);
+                    if (!valid) {
+                        throw new Error(reason || 'Format de carte invalide');
+                    }
                     setCurrentMap(parsed, { center: true });
                 } catch (err) {
-                    alert('Invalid JSON');
+                    console.error(err);
+                    alert(err.message || 'Invalid JSON');
                 }
             };
             reader.readAsText(file);
@@ -457,6 +462,10 @@ async function loadInitialMap() {
 }
 
 function setCurrentMap(newMap, { center = true, remember = true } = {}) {
+    const { valid, reason } = validateMapStructure(newMap);
+    if (!valid) {
+        throw new Error(reason || 'Carte invalide.');
+    }
     const cloned = typeof structuredClone === 'function'
         ? structuredClone(newMap)
         : JSON.parse(JSON.stringify(newMap));
@@ -834,10 +843,10 @@ async function loadMapById(id, { silentError = false } = {}) {
         enableRemote();
         const data = await resp.json();
         const loadedMap = data?.map || data?.data || data;
-        if (!loadedMap || !loadedMap.nodes) {
-            throw new Error('Format de carte invalide');
+        const { valid, reason } = validateMapStructure(loadedMap);
+        if (!valid) {
+            throw new Error(reason ? `Format de carte invalide : ${reason}` : 'Format de carte invalide');
         }
-        ensureSettings(loadedMap);
         setCurrentMap(loadedMap, { center: true, remember: true });
         return true;
     } catch (err) {

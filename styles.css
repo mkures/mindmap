@@ -206,6 +206,8 @@ body.dragging-node {
 
 .drag-preview {
     position: fixed;
+    top: 0;
+    left: 0;
     pointer-events: none;
     border-radius: 8px;
     border: 1px solid rgba(0,0,0,0.2);
@@ -219,6 +221,7 @@ body.dragging-node {
     font-weight: 600;
     opacity: 0.95;
     z-index: 20;
+    will-change: transform;
 }
 
 .map-list {

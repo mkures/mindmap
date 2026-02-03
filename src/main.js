@@ -12,13 +12,9 @@ import {
     isDescendant
 } from './model.js';
 import { layout } from './layout.js';
-import { render } from './render.js';
+import { render, clearRenderCache } from './render.js';
 
-const MAPS_ENDPOINT = 'https://hook.us1.make.com/1h4vrxpfuowna3gvc4xjbgbiqqo3ts1q';
-const API_KEY_HEADER_NAME = 'x-make-apikey';
-const API_KEY_VALUE = 'a2416722-6550-40ae-a5e1-da2678017617';
-const API_TOKEN_META_NAME = 'mindmap-api-token';
-const API_CONFIG_SCRIPT_ID = 'mindmapConfig';
+const MAPS_ENDPOINT = '/api/maps';
 const LAST_MAP_STORAGE_KEY = 'mindmap:lastMapId';
 
 const viewport = document.getElementById('viewport');
@@ -64,7 +60,9 @@ let editingInput = null;
 let editingId = null;
 let editingOriginalText = null;
 
-let apiToken = resolveApiToken();
+let layoutDirty = true;
+let pendingUpdate = false;
+
 let remoteAvailable = true;
 let remoteDisabledMessage = '';
 
@@ -78,7 +76,6 @@ init();
 async function init() {
     updateSaveStatus();
     wireUI();
-    apiToken = resolveApiToken();
     updateRemoteUIState();
     showApp();
     await loadInitialMap();
@@ -135,6 +132,7 @@ function wireUI() {
             const id = addChild(map, selectedId);
             selectedId = id;
             needsCenterOnRoot = false;
+            markLayoutDirty();
             update();
             markMapChanged();
             startEditing(id);
@@ -148,6 +146,7 @@ function wireUI() {
             if (id) {
                 selectedId = id;
                 needsCenterOnRoot = false;
+                markLayoutDirty();
                 update();
                 markMapChanged();
                 startEditing(id);
@@ -161,6 +160,7 @@ function wireUI() {
             deleteNode(map, selectedId);
             selectedId = map.rootId;
             needsCenterOnRoot = false;
+            markLayoutDirty();
             update();
             markMapChanged();
         };
@@ -169,6 +169,7 @@ function wireUI() {
     if (newBtn) {
         newBtn.onclick = () => {
             const fresh = createEmptyMap();
+            markLayoutDirty();
             setCurrentMap(fresh, { center: true, remember: false });
             markMapChanged();
             startEditing(selectedId);
@@ -213,6 +214,7 @@ function wireUI() {
                         naturalWidth: img.width,
                         naturalHeight: img.height
                     });
+                    markLayoutDirty();
                     update();
                     markMapChanged();
                 };
@@ -296,6 +298,7 @@ function wireUI() {
                     : DEFAULTS.autosaveDelay;
             }
             closeConfig();
+            markLayoutDirty();
             update();
             markMapChanged();
         });
@@ -344,7 +347,7 @@ function wireUI() {
         if (isPanning) {
             pan.x = e.clientX - panStart.x;
             pan.y = e.clientY - panStart.y;
-            update();
+            scheduleUpdate();
         }
     });
 
@@ -360,7 +363,7 @@ function wireUI() {
         e.preventDefault();
         const delta = e.deltaY > 0 ? -0.1 : 0.1;
         pan.scale = Math.min(2, Math.max(0.25, pan.scale + delta));
-        update();
+        scheduleUpdate();
     }, { passive: false });
 
     window.addEventListener('keydown', e => {
@@ -384,6 +387,7 @@ function wireUI() {
         } else if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && e.shiftKey) {
             e.preventDefault();
             if (moveSibling(map, selectedId, e.key === 'ArrowUp' ? -1 : 1)) {
+                markLayoutDirty();
                 update();
                 markMapChanged();
             }
@@ -464,8 +468,10 @@ function setCurrentMap(newMap, { center = true, remember = true } = {}) {
     selectedId = map.rootId;
     pan = { x: 0, y: 0, scale: 1 };
     needsCenterOnRoot = center;
+    layoutDirty = true;
     autosavePending = false;
     lastSaveError = null;
+    clearRenderCache();
     if (remember && map?.id) {
         localStorage.setItem(LAST_MAP_STORAGE_KEY, map.id);
     }
@@ -476,7 +482,10 @@ function setCurrentMap(newMap, { center = true, remember = true } = {}) {
 function update() {
     if (!map) return;
     ensureSettings(map);
-    layout(map);
+    if (layoutDirty) {
+        layout(map);
+        layoutDirty = false;
+    }
     if (needsCenterOnRoot) {
         centerOnRoot();
         needsCenterOnRoot = false;
@@ -500,6 +509,19 @@ function update() {
             }
         }
     }
+}
+
+function scheduleUpdate() {
+    if (pendingUpdate) return;
+    pendingUpdate = true;
+    requestAnimationFrame(() => {
+        pendingUpdate = false;
+        update();
+    });
+}
+
+function markLayoutDirty() {
+    layoutDirty = true;
 }
 
 function updateDocumentTitle() {
@@ -547,6 +569,9 @@ function startNodeDrag(nodeEl, event) {
     };
 }
 
+let lastDropTargetCheck = 0;
+const DROP_TARGET_THROTTLE = 50;
+
 function updateNodeDrag(event) {
     if (!dragState || !map) return;
     if (!dragState.hasMoved) {
@@ -560,6 +585,12 @@ function updateNodeDrag(event) {
     if (!dragState.hasMoved) return;
     event.preventDefault();
     positionDragPreview(event.clientX, event.clientY);
+
+    // Throttle drop target detection
+    const now = performance.now();
+    if (now - lastDropTargetCheck < DROP_TARGET_THROTTLE) return;
+    lastDropTargetCheck = now;
+
     const el = document.elementFromPoint(event.clientX, event.clientY);
     const node = el ? el.closest('.node') : null;
     if (!node) {
@@ -593,6 +624,7 @@ function endNodeDrag() {
     dragState = null;
     if (targetId && reparentNode(map, id, targetId)) {
         selectedId = id;
+        markLayoutDirty();
         update();
         markMapChanged();
     } else if (hasMoved) {
@@ -605,8 +637,7 @@ function positionDragPreview(clientX, clientY) {
     if (!dragState || !dragState.preview) return;
     const x = clientX - dragState.offsetX;
     const y = clientY - dragState.offsetY;
-    dragState.preview.style.left = `${x}px`;
-    dragState.preview.style.top = `${y}px`;
+    dragState.preview.style.transform = `translate(${x}px, ${y}px)`;
 }
 
 function clearDropTarget() {
@@ -681,6 +712,7 @@ function startEditing(id, initial) {
                 const childId = addChild(map, currentId);
                 if (childId) {
                     selectedId = childId;
+                    markLayoutDirty();
                     update();
                     markMapChanged();
                     startEditing(childId);
@@ -712,6 +744,7 @@ function finishEditing() {
     editingInput = null;
     editingId = null;
     editingOriginalText = null;
+    markLayoutDirty();
     update();
     markMapChanged();
 }
@@ -880,11 +913,7 @@ async function fetchMapSummaries() {
 }
 
 function getAuthHeaders() {
-    const headers = { 'Content-Type': 'application/json', [API_KEY_HEADER_NAME]: API_KEY_VALUE };
-    if (apiToken) {
-        headers['Authorization'] = `Bearer ${apiToken}`;
-    }
-    return headers;
+    return { 'Content-Type': 'application/json' };
 }
 
 function markMapChanged() {
@@ -1009,41 +1038,6 @@ function updateSaveStatus() {
         return;
     }
     saveStatusEl.textContent = 'Toutes les modifications sont sauvegardées';
-}
-
-function resolveApiToken() {
-    try {
-        if (typeof window !== 'undefined') {
-            if (window.MINDMAP_API_TOKEN) {
-                return String(window.MINDMAP_API_TOKEN).trim();
-            }
-            if (window.__ENV?.MINDMAP_API_TOKEN) {
-                return String(window.__ENV.MINDMAP_API_TOKEN).trim();
-            }
-        }
-    } catch (err) {
-        console.warn('Impossible de lire window.__ENV', err);
-    }
-    const datasetToken = document.body?.dataset?.mindmapApiToken;
-    if (datasetToken) {
-        return datasetToken.trim();
-    }
-    const meta = document.querySelector(`meta[name="${API_TOKEN_META_NAME}"]`);
-    if (meta?.content) {
-        return meta.content.trim();
-    }
-    const script = document.getElementById(API_CONFIG_SCRIPT_ID);
-    if (script?.textContent) {
-        try {
-            const config = JSON.parse(script.textContent);
-            if (config?.apiToken) {
-                return String(config.apiToken).trim();
-            }
-        } catch (err) {
-            console.warn('Configuration JSON invalide dans #mindmapConfig', err);
-        }
-    }
-    return null;
 }
 
 function isNetworkError(err) {

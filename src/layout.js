@@ -1,9 +1,38 @@
-const NODE_W = 80;
+const MIN_NODE_W = 80;
+const MAX_NODE_W = 200;
 const NODE_H = 40;
+const LINE_HEIGHT = 20;
 const H_GAP = 60;
 const V_GAP = 20;
+const CHAR_WIDTH = 8; // Approximate character width
+const PADDING = 20;
 
 const FALLBACK_COLORS = ['#ffffff', '#ff6f59', '#f6bd60', '#43aa8b', '#577590', '#d7263d', '#06d6a0'];
+
+// Wrap text into lines that fit within maxWidth
+function wrapText(text, maxWidth) {
+    const words = text.split(/\s+/);
+    const lines = [];
+    let currentLine = '';
+
+    for (const word of words) {
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+        const testWidth = testLine.length * CHAR_WIDTH;
+
+        if (testWidth > maxWidth && currentLine) {
+            lines.push(currentLine);
+            currentLine = word;
+        } else {
+            currentLine = testLine;
+        }
+    }
+
+    if (currentLine) {
+        lines.push(currentLine);
+    }
+
+    return lines.length ? lines : [text];
+}
 
 export function layout(map) {
     const heights = {};
@@ -14,8 +43,21 @@ export function layout(map) {
 
     function measure(id) {
         const node = map.nodes[id];
-        node.w = NODE_W + (node.media ? node.media.width + 10 : 0);
-        node.h = Math.max(NODE_H, node.media ? node.media.height + 10 : NODE_H);
+        const textWidth = node.text.length * CHAR_WIDTH;
+        const mediaWidth = node.media ? node.media.width + 10 : 0;
+
+        // Calculate width: min of text width or max, plus media
+        const contentWidth = Math.min(textWidth, MAX_NODE_W - PADDING);
+        node.w = Math.max(MIN_NODE_W, contentWidth + PADDING + mediaWidth);
+
+        // Wrap text and calculate height
+        const wrapWidth = MAX_NODE_W - PADDING - mediaWidth;
+        node._lines = wrapText(node.text, wrapWidth);
+        const textHeight = node._lines.length * LINE_HEIGHT + 10;
+        const mediaHeight = node.media ? node.media.height + 10 : 0;
+
+        node.h = Math.max(NODE_H, textHeight, mediaHeight);
+
         if (!node.children.length) {
             heights[id] = node.h;
             return heights[id];
@@ -36,7 +78,15 @@ export function layout(map) {
         node.depth = depth;
         const colorIndex = Math.min(depth, colors.length - 1);
         node.color = colors[colorIndex] || colors[colors.length - 1] || '#ffffff';
-        node.x = depth * (NODE_W + H_GAP);
+
+        // Calculate x based on previous nodes' actual widths
+        if (depth === 0) {
+            node.x = 0;
+        } else {
+            const parent = map.nodes[node.parentId];
+            node.x = parent.x + parent.w + H_GAP;
+        }
+
         node.y = centerY - node.h / 2;
         if (!node.children.length) return;
         let total = 0;

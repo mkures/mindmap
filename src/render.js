@@ -113,17 +113,30 @@ export function render(map, svg, selectedId) {
             img.remove();
         }
 
-        // Update text
+        // Update text with multi-line support
         const text = g.querySelector('text');
         text.setAttribute('x', offset);
-        text.setAttribute('y', node.h / 2);
         if (settings.fontFamily) {
             text.setAttribute('font-family', settings.fontFamily);
         }
         if (settings.fontSize) {
             text.setAttribute('font-size', settings.fontSize);
         }
-        text.textContent = node.text;
+
+        // Clear existing tspans
+        text.innerHTML = '';
+
+        const lines = node._lines || [node.text];
+        const lineHeight = 20;
+        const startY = (node.h - lines.length * lineHeight) / 2 + lineHeight / 2 + 5;
+
+        lines.forEach((line, i) => {
+            const tspan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+            tspan.setAttribute('x', offset);
+            tspan.setAttribute('y', startY + i * lineHeight);
+            tspan.textContent = line;
+            text.appendChild(tspan);
+        });
     }
 
     // Remove old nodes

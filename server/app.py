@@ -23,6 +23,12 @@ print(f"[CONFIG] DB_PATH={DB_PATH}", flush=True)
 print(f"[CONFIG] PROJECT_ROOT={PROJECT_ROOT}", flush=True)
 
 
+@app.before_request
+def log_request():
+    """Log all incoming requests."""
+    print(f"[REQUEST] {request.method} {request.path}", flush=True)
+
+
 def get_db():
     """Get database connection with row factory."""
     conn = sqlite3.connect(DB_PATH)

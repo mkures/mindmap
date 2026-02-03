@@ -1,10 +1,14 @@
 import os
+import sys
 import json
 import sqlite3
 import uuid
 import time
 from functools import wraps
 from flask import Flask, request, jsonify, send_from_directory, Response
+
+# Force unbuffered output for Railway logs
+print("=== Starting MindMap Server ===", flush=True)
 
 # Get the project root (parent of server/)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -14,6 +18,9 @@ app = Flask(__name__, static_folder=PROJECT_ROOT, static_url_path='')
 DB_PATH = os.environ.get('DB_PATH', 'mindmap.db')
 BASIC_AUTH_USERNAME = os.environ.get('BASIC_AUTH_USERNAME', 'admin')
 BASIC_AUTH_PASSWORD = os.environ.get('BASIC_AUTH_PASSWORD', 'changeme')
+
+print(f"[CONFIG] DB_PATH={DB_PATH}", flush=True)
+print(f"[CONFIG] PROJECT_ROOT={PROJECT_ROOT}", flush=True)
 
 
 def get_db():
@@ -25,18 +32,23 @@ def get_db():
 
 def init_db():
     """Initialize database schema."""
-    conn = get_db()
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS maps (
-            id TEXT PRIMARY KEY,
-            title TEXT,
-            data TEXT,
-            created_at INTEGER,
-            updated_at INTEGER
-        )
-    ''')
-    conn.commit()
-    conn.close()
+    print(f"[DB] Initializing database at {DB_PATH}", flush=True)
+    try:
+        conn = get_db()
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS maps (
+                id TEXT PRIMARY KEY,
+                title TEXT,
+                data TEXT,
+                created_at INTEGER,
+                updated_at INTEGER
+            )
+        ''')
+        conn.commit()
+        conn.close()
+        print(f"[DB] Database initialized successfully", flush=True)
+    except Exception as e:
+        print(f"[DB] ERROR initializing database: {e}", flush=True)
 
 
 def check_auth(username, password):
@@ -73,6 +85,7 @@ def requires_auth(f):
 def get_maps():
     """Get map list or single map."""
     map_id = request.args.get('id')
+    print(f"[API] GET /api/maps?id={map_id}", flush=True)
     conn = get_db()
 
     if map_id == '0' or map_id is None:
@@ -109,9 +122,12 @@ def get_maps():
 @requires_auth
 def save_map():
     """Save or update a map."""
+    print(f"[API] POST /api/maps", flush=True)
     data = request.get_json()
     if not data:
+        print(f"[API] ERROR: Invalid JSON", flush=True)
         return jsonify({'error': 'Invalid JSON'}), 400
+    print(f"[API] Saving map: id={data.get('id')}, title={data.get('title')}", flush=True)
 
     map_id = data.get('id')
     title = data.get('title', 'Sans titre')
@@ -147,6 +163,7 @@ def save_map():
 
     conn.commit()
     conn.close()
+    print(f"[API] Map saved successfully: id={map_id}", flush=True)
 
     return jsonify({
         'id': map_id,

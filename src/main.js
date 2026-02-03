@@ -851,7 +851,8 @@ async function loadMapById(id, { silentError = false } = {}) {
     if (!ensureRemoteEnabled({ silent: silentError })) return false;
     try {
         const resp = await fetch(`${MAPS_ENDPOINT}?id=${encodeURIComponent(id)}`, {
-            headers: getAuthHeaders()
+            headers: getAuthHeaders(),
+            credentials: 'include'
         });
         if (resp.status === 401 || resp.status === 403) {
             disableRemote('Accès refusé par l’API distante. Vérifiez la clé API configurée.');
@@ -889,7 +890,8 @@ async function fetchMapSummaries() {
     if (!ensureRemoteEnabled({ silent: true })) return [];
     try {
         const resp = await fetch(`${MAPS_ENDPOINT}?id=0`, {
-            headers: getAuthHeaders()
+            headers: getAuthHeaders(),
+            credentials: 'include'
         });
         if (resp.status === 401 || resp.status === 403) {
             disableRemote('Accès refusé par l’API distante. Vérifiez la clé API configurée.');
@@ -964,6 +966,7 @@ async function runAutosave() {
         const resp = await fetch(MAPS_ENDPOINT, {
             method: 'POST',
             headers: getAuthHeaders(),
+            credentials: 'include',
             body: JSON.stringify(payload)
         });
         if (resp.status === 401 || resp.status === 403) {

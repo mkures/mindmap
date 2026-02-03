@@ -64,19 +64,9 @@ def requires_auth(f):
     return decorated
 
 
-@app.route('/')
-@requires_auth
-def index():
-    """Serve the main application."""
-    return send_from_directory(app.static_folder, 'index.html')
-
-
-@app.route('/<path:path>')
-@requires_auth
-def static_files(path):
-    """Serve static files (JS, CSS, etc.)."""
-    return send_from_directory(app.static_folder, path)
-
+# =============================================================================
+# API ROUTES (must be defined BEFORE catch-all static route)
+# =============================================================================
 
 @app.route('/api/maps', methods=['GET'])
 @requires_auth
@@ -174,6 +164,27 @@ def delete_map(map_id):
     conn.commit()
     conn.close()
     return jsonify({'success': True})
+
+
+# =============================================================================
+# STATIC FILE ROUTES (catch-all, must be AFTER API routes)
+# =============================================================================
+
+@app.route('/')
+@requires_auth
+def index():
+    """Serve the main application."""
+    return send_from_directory(app.static_folder, 'index.html')
+
+
+@app.route('/<path:path>')
+@requires_auth
+def static_files(path):
+    """Serve static files (JS, CSS, etc.)."""
+    # Don't serve files from api/ path
+    if path.startswith('api/'):
+        return jsonify({'error': 'Not found'}), 404
+    return send_from_directory(app.static_folder, path)
 
 
 # Initialize database on startup

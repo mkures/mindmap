@@ -6,7 +6,9 @@ import time
 from functools import wraps
 from flask import Flask, request, jsonify, send_from_directory, Response
 
-app = Flask(__name__, static_folder='..', static_url_path='')
+# Get the project root (parent of server/)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+app = Flask(__name__, static_folder=PROJECT_ROOT, static_url_path='')
 
 # Configuration
 DB_PATH = os.environ.get('DB_PATH', 'mindmap.db')

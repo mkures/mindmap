@@ -24,11 +24,11 @@ python app.py
 ## Architecture
 
 ```
+Procfile              Railway deployment (gunicorn server.app:app)
+requirements.txt      Python dependencies (flask, gunicorn)
 server/
   app.py              Flask backend - serves static files + REST API
-  requirements.txt    Python dependencies (flask, gunicorn)
-  Procfile           Railway/Heroku deployment config
-  mindmap.db         SQLite database (created at runtime)
+  mindmap.db          SQLite database (created at runtime, or in /data on Railway)
 
 index.html          Entry point with UI structure
 styles.css          All styling
@@ -77,8 +77,12 @@ MindNode {
 
 1. Push to Git
 2. Connect Railway to repo
-3. Set environment variables: `BASIC_AUTH_USERNAME`, `BASIC_AUTH_PASSWORD`
-4. Railway auto-detects Python + Procfile
+3. **Add a Volume** (Settings → Volumes): mount path `/data`
+4. Set environment variables:
+   - `BASIC_AUTH_USERNAME` - your username
+   - `BASIC_AUTH_PASSWORD` - your password
+   - `DB_PATH` = `/data/mindmap.db` (persistent storage)
+5. Railway auto-detects Python + Procfile
 
 ## Key Keyboard Shortcuts
 

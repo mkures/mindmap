@@ -13,6 +13,7 @@ import {
 } from './model.js';
 import { layout } from './layout.js';
 import { render, clearRenderCache } from './render.js';
+import { exportMarkdown, exportImage, exportPdf } from './export.js';
 
 const MAPS_ENDPOINT = '/api/maps';
 const LAST_MAP_STORAGE_KEY = 'mindmap:lastMapId';
@@ -39,6 +40,9 @@ const saveBtn = document.getElementById('saveBtn');
 const loadBtn = document.getElementById('loadBtn');
 const imageInput = document.getElementById('imageInput');
 const loadInput = document.getElementById('loadInput');
+const exportPdfBtn = document.getElementById('exportPdfBtn');
+const exportImageBtn = document.getElementById('exportImageBtn');
+const exportMdBtn = document.getElementById('exportMdBtn');
 const configBtn = document.getElementById('configBtn');
 const configModal = document.getElementById('configModal');
 const configForm = document.getElementById('configForm');
@@ -264,6 +268,27 @@ function wireUI() {
 
     if (fitBtn) {
         fitBtn.onclick = () => fitToScreen();
+    }
+
+    if (exportPdfBtn) {
+        exportPdfBtn.onclick = () => {
+            if (!map) return;
+            exportPdf(svgElement, map, pan);
+        };
+    }
+
+    if (exportImageBtn) {
+        exportImageBtn.onclick = () => {
+            if (!map) return;
+            exportImage(svgElement, map, pan);
+        };
+    }
+
+    if (exportMdBtn) {
+        exportMdBtn.onclick = () => {
+            if (!map) return;
+            exportMarkdown(map);
+        };
     }
 
     if (configBtn) {

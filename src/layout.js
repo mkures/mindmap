@@ -11,6 +11,7 @@ const FALLBACK_COLORS = ['#ffffff', '#ff6f59', '#f6bd60', '#43aa8b', '#577590', 
 
 // Wrap text into lines that fit within maxWidth
 function wrapText(text, maxWidth) {
+    if (!text) return [''];
     const words = text.split(/\s+/);
     const lines = [];
     let currentLine = '';
@@ -41,9 +42,24 @@ export function layout(map) {
         ? settings.levelColors
         : FALLBACK_COLORS;
 
+    // Track visited nodes to prevent infinite recursion from circular references
+    const visited = new Set();
+
     function measure(id) {
+        // Prevent infinite recursion
+        if (visited.has(id)) {
+            console.warn(`[layout] Circular reference detected at node ${id}`);
+            return 40;
+        }
+        visited.add(id);
+
         const node = map.nodes[id];
-        const textWidth = node.text.length * CHAR_WIDTH;
+        if (!node) {
+            console.warn(`[layout] Node ${id} not found`);
+            return 40;
+        }
+
+        const textWidth = (node.text || '').length * CHAR_WIDTH;
         const mediaWidth = node.media ? node.media.width + 10 : 0;
 
         // Calculate width: min of text width or max, plus media
@@ -58,23 +74,33 @@ export function layout(map) {
 
         node.h = Math.max(NODE_H, textHeight, mediaHeight);
 
-        if (!node.children.length) {
+        // Filter valid children (exist and not circular)
+        const validChildren = (node.children || []).filter(c => map.nodes[c] && !visited.has(c));
+
+        if (!validChildren.length) {
             heights[id] = node.h;
             return heights[id];
         }
         let total = 0;
-        node.children.forEach(c => {
+        validChildren.forEach(c => {
             total += measure(c);
         });
-        total += V_GAP * (node.children.length - 1);
+        total += V_GAP * (validChildren.length - 1);
         heights[id] = Math.max(node.h, total);
         return heights[id];
     }
 
     measure(map.rootId);
 
+    const placed = new Set();
+
     function place(id, depth, centerY) {
+        if (placed.has(id)) return;
+        placed.add(id);
+
         const node = map.nodes[id];
+        if (!node) return;
+
         node.depth = depth;
         const colorIndex = Math.min(depth, colors.length - 1);
         node.color = colors[colorIndex] || colors[colors.length - 1] || '#ffffff';
@@ -84,17 +110,20 @@ export function layout(map) {
             node.x = 0;
         } else {
             const parent = map.nodes[node.parentId];
-            node.x = parent.x + parent.w + H_GAP;
+            node.x = parent ? parent.x + parent.w + H_GAP : 0;
         }
 
         node.y = centerY - node.h / 2;
-        if (!node.children.length) return;
+
+        const validChildren = (node.children || []).filter(c => map.nodes[c] && heights[c] && !placed.has(c));
+        if (!validChildren.length) return;
+
         let total = 0;
-        node.children.forEach(c => total += heights[c]);
-        total += V_GAP * (node.children.length - 1);
+        validChildren.forEach(c => total += heights[c] || 40);
+        total += V_GAP * (validChildren.length - 1);
         let start = centerY - total / 2;
-        node.children.forEach(c => {
-            const h = heights[c];
+        validChildren.forEach(c => {
+            const h = heights[c] || 40;
             const childCenter = start + h / 2;
             place(c, depth + 1, childCenter);
             start += h + V_GAP;

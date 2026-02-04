@@ -144,3 +144,75 @@ export function moveSibling(map, nodeId, offset) {
     map.updatedAt = Date.now();
     return true;
 }
+
+// Copy a node and all its descendants (returns a standalone subtree object)
+export function copySubtree(map, nodeId) {
+    const node = map.nodes[nodeId];
+    if (!node) return null;
+
+    const subtree = {
+        nodes: {},
+        rootId: nodeId
+    };
+
+    function cloneNode(id) {
+        const n = map.nodes[id];
+        if (!n) return;
+        subtree.nodes[id] = {
+            id: n.id,
+            parentId: n.parentId,
+            text: n.text,
+            children: [...(n.children || [])],
+            color: n.color
+        };
+        if (n.media) {
+            subtree.nodes[id].media = { ...n.media };
+        }
+        for (const childId of (n.children || [])) {
+            cloneNode(childId);
+        }
+    }
+
+    cloneNode(nodeId);
+    return subtree;
+}
+
+// Paste a copied subtree as children of targetId
+export function pasteSubtree(map, subtree, targetId) {
+    if (!subtree || !subtree.nodes || !subtree.rootId) return null;
+    if (!map.nodes[targetId]) return null;
+
+    // Create ID mapping from old IDs to new IDs
+    const idMap = {};
+    for (const oldId of Object.keys(subtree.nodes)) {
+        idMap[oldId] = generateNodeId(map);
+        // Reserve the ID in the map temporarily
+        map.nodes[idMap[oldId]] = {};
+    }
+
+    // Clone nodes with new IDs
+    const newRootId = idMap[subtree.rootId];
+    for (const [oldId, oldNode] of Object.entries(subtree.nodes)) {
+        const newId = idMap[oldId];
+        const newParentId = oldId === subtree.rootId
+            ? targetId
+            : idMap[oldNode.parentId];
+
+        map.nodes[newId] = {
+            id: newId,
+            parentId: newParentId,
+            text: oldNode.text,
+            children: (oldNode.children || []).map(cid => idMap[cid]),
+            color: oldNode.color
+        };
+        if (oldNode.media) {
+            map.nodes[newId].media = { ...oldNode.media };
+        }
+    }
+
+    // Add new root to target's children
+    map.nodes[targetId].children.push(newRootId);
+    map.updatedAt = Date.now();
+
+    return newRootId;
+}

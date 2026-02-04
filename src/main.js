@@ -9,7 +9,9 @@ import {
     MIN_AUTOSAVE_DELAY,
     reparentNode,
     moveSibling,
-    isDescendant
+    isDescendant,
+    copySubtree,
+    pasteSubtree
 } from './model.js';
 import { layout } from './layout.js';
 import { render, clearRenderCache } from './render.js';
@@ -74,6 +76,8 @@ let autosaveTimer = null;
 let autosavePending = false;
 let autosaveInFlight = false;
 let lastSaveError = null;
+
+let clipboard = null; // Stores copied subtree
 
 init();
 
@@ -406,6 +410,23 @@ function wireUI() {
         } else if (e.key === 'f' && e.ctrlKey) {
             e.preventDefault();
             fitToScreen();
+        } else if (e.key === 'c' && e.ctrlKey) {
+            e.preventDefault();
+            if (selectedId) {
+                clipboard = copySubtree(map, selectedId);
+                console.log('Copied node:', selectedId);
+            }
+        } else if (e.key === 'v' && e.ctrlKey) {
+            e.preventDefault();
+            if (clipboard && selectedId) {
+                const newId = pasteSubtree(map, clipboard, selectedId);
+                if (newId) {
+                    selectedId = newId;
+                    markLayoutDirty();
+                    update();
+                    markMapChanged();
+                }
+            }
         } else if (e.key === 'F2') {
             e.preventDefault();
             startEditing(selectedId);

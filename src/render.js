@@ -28,6 +28,9 @@ export function render(map, svg, selectedId) {
         const node = map.nodes[id];
         if (node.parentId) {
             const parent = map.nodes[node.parentId];
+            // Skip if parent doesn't exist or positions are invalid
+            if (!parent || !isFinite(node.x) || !isFinite(parent.x)) continue;
+
             const linkId = `${node.parentId}-${id}`;
             currentLinkIds.add(linkId);
 
@@ -60,6 +63,9 @@ export function render(map, svg, selectedId) {
     // Update or create nodes
     for (const id in map.nodes) {
         const node = map.nodes[id];
+        // Skip nodes with invalid coordinates (from circular references or corruption)
+        if (!isFinite(node.x) || !isFinite(node.y)) continue;
+
         let g = nodeElements.get(id);
 
         if (!g) {

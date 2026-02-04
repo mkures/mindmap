@@ -56,9 +56,20 @@ export function createEmptyMap() {
     return ensureSettings(map);
 }
 
+// Generate a unique node ID that doesn't collide with existing nodes
+function generateNodeId(map) {
+    let counter = Object.keys(map.nodes).length + 1;
+    let id = 'n' + counter;
+    while (map.nodes[id]) {
+        counter++;
+        id = 'n' + counter;
+    }
+    return id;
+}
+
 export function addChild(map, parentId) {
     ensureSettings(map);
-    const id = 'n' + (Object.keys(map.nodes).length + 1);
+    const id = generateNodeId(map);
     map.nodes[id] = { id, parentId, text: 'Node', children: [], color: map.nodes[parentId] ? map.nodes[parentId].color : map.settings.levelColors[0] };
     map.nodes[parentId].children.push(id);
     map.updatedAt = Date.now();

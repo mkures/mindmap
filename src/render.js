@@ -128,12 +128,14 @@ export function render(map, svg, selectedId) {
 
         const lines = node._lines || [node.text];
         const lineHeight = 20;
-        const startY = (node.h - lines.length * lineHeight) / 2 + lineHeight / 2 + 5;
+        // Center text block vertically: first line at center minus half of total block height
+        const startY = node.h / 2 - (lines.length - 1) * lineHeight / 2;
 
         lines.forEach((line, i) => {
             const tspan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
             tspan.setAttribute('x', offset);
             tspan.setAttribute('y', startY + i * lineHeight);
+            tspan.setAttribute('dominant-baseline', 'middle');
             tspan.textContent = line;
             text.appendChild(tspan);
         });

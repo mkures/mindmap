@@ -20,11 +20,24 @@ export function render(map, svg, selectedId) {
         linkElements.clear();
     }
 
-    const currentNodeIds = new Set(Object.keys(map.nodes));
+    // Build set of visible nodes (not hidden by collapsed ancestors)
+    const visibleNodeIds = new Set();
+    function collectVisible(nodeId) {
+        const node = map.nodes[nodeId];
+        if (!node) return;
+        visibleNodeIds.add(nodeId);
+        if (node.collapsed) return; // Don't traverse children of collapsed nodes
+        for (const childId of (node.children || [])) {
+            collectVisible(childId);
+        }
+    }
+    collectVisible(map.rootId);
+
+    const currentNodeIds = visibleNodeIds;
     const currentLinkIds = new Set();
 
-    // Update or create links
-    for (const id in map.nodes) {
+    // Update or create links (only for visible nodes)
+    for (const id of visibleNodeIds) {
         const node = map.nodes[id];
         if (node.parentId) {
             const parent = map.nodes[node.parentId];
@@ -60,8 +73,8 @@ export function render(map, svg, selectedId) {
         }
     }
 
-    // Update or create nodes
-    for (const id in map.nodes) {
+    // Update or create nodes (only visible ones)
+    for (const id of visibleNodeIds) {
         const node = map.nodes[id];
         // Skip nodes with invalid coordinates (from circular references or corruption)
         if (!isFinite(node.x) || !isFinite(node.y)) continue;

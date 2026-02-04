@@ -11,7 +11,8 @@ import {
     moveSibling,
     isDescendant,
     copySubtree,
-    pasteSubtree
+    pasteSubtree,
+    toggleCollapse
 } from './model.js';
 import { layout } from './layout.js';
 import { render, clearRenderCache } from './render.js';
@@ -430,6 +431,13 @@ function wireUI() {
         } else if (e.key === 'F2') {
             e.preventDefault();
             startEditing(selectedId);
+        } else if (e.key === ' ') {
+            e.preventDefault();
+            if (selectedId && toggleCollapse(map, selectedId)) {
+                markLayoutDirty();
+                update();
+                markMapChanged();
+            }
         } else if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && e.shiftKey) {
             e.preventDefault();
             if (moveSibling(map, selectedId, e.key === 'ArrowUp' ? -1 : 1)) {

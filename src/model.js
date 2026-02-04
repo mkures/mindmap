@@ -216,3 +216,14 @@ export function pasteSubtree(map, subtree, targetId) {
 
     return newRootId;
 }
+
+// Toggle collapsed state of a node
+export function toggleCollapse(map, nodeId) {
+    const node = map.nodes[nodeId];
+    if (!node) return false;
+    // Only allow collapse if node has children
+    if (!node.children || node.children.length === 0) return false;
+    node.collapsed = !node.collapsed;
+    map.updatedAt = Date.now();
+    return true;
+}

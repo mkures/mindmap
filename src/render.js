@@ -145,6 +145,39 @@ export function render(map, svg, selectedId) {
             tspan.textContent = line;
             text.appendChild(tspan);
         });
+
+        // Collapse indicator
+        let collapseIndicator = g.querySelector('.collapse-indicator');
+        const hasChildren = node.children && node.children.length > 0;
+
+        if (hasChildren && node.collapsed) {
+            if (!collapseIndicator) {
+                collapseIndicator = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                collapseIndicator.classList.add('collapse-indicator');
+
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('r', 10);
+                circle.setAttribute('fill', '#666');
+                collapseIndicator.appendChild(circle);
+
+                const plus = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                plus.setAttribute('text-anchor', 'middle');
+                plus.setAttribute('dominant-baseline', 'middle');
+                plus.setAttribute('fill', '#fff');
+                plus.setAttribute('font-size', '14');
+                plus.setAttribute('font-weight', 'bold');
+                plus.textContent = '+';
+                collapseIndicator.appendChild(plus);
+
+                g.appendChild(collapseIndicator);
+            }
+            collapseIndicator.setAttribute('transform', `translate(${node.w + 15},${node.h / 2})`);
+            // Show count of hidden children
+            const countText = collapseIndicator.querySelector('text');
+            countText.textContent = node.children.length;
+        } else if (collapseIndicator) {
+            collapseIndicator.remove();
+        }
     }
 
     // Remove old nodes

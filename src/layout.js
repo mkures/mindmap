@@ -74,6 +74,12 @@ export function layout(map) {
 
         node.h = Math.max(NODE_H, textHeight, mediaHeight);
 
+        // If collapsed, don't measure children
+        if (node.collapsed) {
+            heights[id] = node.h;
+            return heights[id];
+        }
+
         // Filter valid children (exist and not circular)
         const validChildren = (node.children || []).filter(c => map.nodes[c] && !visited.has(c));
 
@@ -114,6 +120,9 @@ export function layout(map) {
         }
 
         node.y = centerY - node.h / 2;
+
+        // Don't place children if collapsed
+        if (node.collapsed) return;
 
         const validChildren = (node.children || []).filter(c => map.nodes[c] && heights[c] && !placed.has(c));
         if (!validChildren.length) return;

@@ -85,6 +85,7 @@ let clipboard = null; // Stores copied subtree
 let currentFolderId = null; // null = root
 let currentFolderName = null;
 let allFolders = [];
+let viewingTrash = false;
 
 init();
 
@@ -862,6 +863,7 @@ function openMapList() {
     if (!ensureRemoteEnabled()) return;
     currentFolderId = null;
     currentFolderName = null;
+    viewingTrash = false;
     mapListModal.classList.remove('hidden');
     modalBackdrop.classList.remove('hidden');
     refreshMapList();
@@ -877,6 +879,18 @@ function closeMapList() {
 async function refreshMapList() {
     if (!ensureRemoteEnabled()) return;
     mapListContainer.innerHTML = '<div class="map-list-empty">Chargement…</div>';
+
+    if (viewingTrash) {
+        const trashedMaps = await fetchTrashedMaps();
+        if (!remoteAvailable) {
+            mapListContainer.innerHTML = `<div class="map-list-empty">${remoteDisabledMessage}</div>`;
+            return;
+        }
+        updateBreadcrumb();
+        renderTrashList(trashedMaps);
+        return;
+    }
+
     const [folders, maps] = await Promise.all([
         fetchFolders(),
         fetchMapSummaries(currentFolderId)
@@ -894,15 +908,25 @@ function updateBreadcrumb() {
     if (!breadcrumbEl) return;
     breadcrumbEl.innerHTML = '';
     const root = document.createElement('span');
-    root.className = 'breadcrumb-item' + (currentFolderId ? '' : ' active');
+    root.className = 'breadcrumb-item' + (!currentFolderId && !viewingTrash ? ' active' : '');
     root.textContent = 'Racine';
-    if (currentFolderId) {
+    if (currentFolderId || viewingTrash) {
         root.style.cursor = 'pointer';
-        root.onclick = () => navigateToFolder(null, null);
+        root.onclick = () => { viewingTrash = false; navigateToFolder(null, null); };
     }
     breadcrumbEl.appendChild(root);
 
-    if (currentFolderId && currentFolderName) {
+    if (viewingTrash) {
+        const sep = document.createElement('span');
+        sep.className = 'breadcrumb-sep';
+        sep.textContent = ' > ';
+        breadcrumbEl.appendChild(sep);
+
+        const trash = document.createElement('span');
+        trash.className = 'breadcrumb-item active';
+        trash.textContent = 'Corbeille';
+        breadcrumbEl.appendChild(trash);
+    } else if (currentFolderId && currentFolderName) {
         const sep = document.createElement('span');
         sep.className = 'breadcrumb-sep';
         sep.textContent = ' > ';
@@ -957,13 +981,108 @@ function renderMapList(folders, maps) {
     // Show maps
     if (!maps.length && !folders.length) {
         mapListContainer.innerHTML = '<div class="map-list-empty">Aucune carte enregistrée pour le moment.</div>';
-        return;
-    }
-    if (!maps.length && currentFolderId) {
+    } else if (!maps.length && currentFolderId) {
         const empty = document.createElement('div');
         empty.className = 'map-list-empty';
         empty.textContent = 'Ce dossier est vide.';
         mapListContainer.appendChild(empty);
+    } else {
+        maps.forEach(item => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+
+            const left = document.createElement('div');
+            left.className = 'map-info';
+
+            const title = document.createElement('span');
+            title.className = 'map-title';
+            title.textContent = item.title || 'Sans titre';
+
+            const meta = document.createElement('span');
+            meta.className = 'map-meta';
+            meta.textContent = item.updatedAt ? new Date(item.updatedAt).toLocaleString() : '';
+
+            left.appendChild(title);
+            left.appendChild(meta);
+            btn.appendChild(left);
+
+            // Action buttons
+            const actions = document.createElement('div');
+            actions.className = 'map-item-actions';
+
+            const moveBtn = document.createElement('span');
+            moveBtn.className = 'map-action-btn';
+            moveBtn.textContent = 'Deplacer';
+            moveBtn.addEventListener('click', e => {
+                e.stopPropagation();
+                showMoveDialog(item);
+            });
+            actions.appendChild(moveBtn);
+
+            const trashBtn = document.createElement('span');
+            trashBtn.className = 'map-action-btn trash-btn';
+            trashBtn.textContent = 'Supprimer';
+            trashBtn.addEventListener('click', async e => {
+                e.stopPropagation();
+                await fetch(`/api/maps/${item.id}/trash`, {
+                    method: 'PUT',
+                    headers: getAuthHeaders(),
+                    credentials: 'include'
+                });
+                refreshMapList();
+            });
+            actions.appendChild(trashBtn);
+
+            btn.appendChild(actions);
+
+            btn.addEventListener('click', async () => {
+                if (await loadMapById(item.id)) {
+                    closeMapList();
+                }
+            });
+            mapListContainer.appendChild(btn);
+        });
+    }
+
+    // Show Corbeille at bottom (only at root level)
+    if (!currentFolderId) {
+        const trashEntry = document.createElement('button');
+        trashEntry.type = 'button';
+        trashEntry.className = 'folder-item trash-folder';
+
+        const label = document.createElement('span');
+        label.className = 'folder-label trash-label';
+        label.textContent = 'Corbeille';
+
+        trashEntry.appendChild(label);
+        trashEntry.addEventListener('click', () => {
+            viewingTrash = true;
+            refreshMapList();
+        });
+        mapListContainer.appendChild(trashEntry);
+    }
+}
+
+async function fetchTrashedMaps() {
+    if (!ensureRemoteEnabled({ silent: true })) return [];
+    try {
+        const resp = await fetch(`${MAPS_ENDPOINT}?id=0&trashed=1`, {
+            headers: getAuthHeaders(),
+            credentials: 'include'
+        });
+        if (!resp.ok) return [];
+        const data = await resp.json();
+        return Array.isArray(data) ? data : (data?.maps || []);
+    } catch {
+        return [];
+    }
+}
+
+function renderTrashList(maps) {
+    mapListContainer.innerHTML = '';
+
+    if (!maps.length) {
+        mapListContainer.innerHTML = '<div class="map-list-empty">La corbeille est vide.</div>';
         return;
     }
 
@@ -986,27 +1105,39 @@ function renderMapList(folders, maps) {
         left.appendChild(meta);
         btn.appendChild(left);
 
-        // Action buttons
         const actions = document.createElement('div');
         actions.className = 'map-item-actions';
 
-        const moveBtn = document.createElement('span');
-        moveBtn.className = 'map-action-btn';
-        moveBtn.textContent = 'Deplacer';
-        moveBtn.title = 'Deplacer dans un dossier';
-        moveBtn.addEventListener('click', e => {
+        const restoreBtn = document.createElement('span');
+        restoreBtn.className = 'map-action-btn';
+        restoreBtn.textContent = 'Restaurer';
+        restoreBtn.addEventListener('click', async e => {
             e.stopPropagation();
-            showMoveDialog(item);
+            await fetch(`/api/maps/${item.id}/restore`, {
+                method: 'PUT',
+                headers: getAuthHeaders(),
+                credentials: 'include'
+            });
+            refreshMapList();
         });
-        actions.appendChild(moveBtn);
+        actions.appendChild(restoreBtn);
+
+        const deleteBtn = document.createElement('span');
+        deleteBtn.className = 'map-action-btn trash-btn';
+        deleteBtn.textContent = 'Supprimer';
+        deleteBtn.addEventListener('click', async e => {
+            e.stopPropagation();
+            if (!confirm(`Supprimer definitivement "${item.title}" ?`)) return;
+            await fetch(`/api/maps/${item.id}`, {
+                method: 'DELETE',
+                headers: getAuthHeaders(),
+                credentials: 'include'
+            });
+            refreshMapList();
+        });
+        actions.appendChild(deleteBtn);
 
         btn.appendChild(actions);
-
-        btn.addEventListener('click', async () => {
-            if (await loadMapById(item.id)) {
-                closeMapList();
-            }
-        });
         mapListContainer.appendChild(btn);
     });
 }

@@ -411,3 +411,27 @@ body.dragging-node {
     color: #666;
     border-bottom: 1px solid #eee;
 }
+
+/* Trash */
+.trash-btn {
+    color: #d7263d !important;
+}
+
+.trash-btn:hover {
+    background: #fee2e2 !important;
+}
+
+.trash-folder {
+    border-color: #ccc !important;
+    background: #f5f5f5 !important;
+    margin-top: 12px;
+}
+
+.trash-folder:hover {
+    border-color: #999 !important;
+    background: #eee !important;
+}
+
+.trash-label::before {
+    content: '\1F5D1 ' !important;
+}

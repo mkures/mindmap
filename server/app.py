@@ -63,6 +63,11 @@ def init_db():
             conn.execute('ALTER TABLE maps ADD COLUMN folder_id TEXT')
         except sqlite3.OperationalError:
             pass  # Column already exists
+        # Add trashed column to maps if it doesn't exist
+        try:
+            conn.execute('ALTER TABLE maps ADD COLUMN trashed INTEGER DEFAULT 0')
+        except sqlite3.OperationalError:
+            pass  # Column already exists
         conn.commit()
         conn.close()
         print(f"[DB] Database initialized successfully", flush=True)
@@ -110,18 +115,23 @@ def get_maps():
     if map_id == '0' or map_id is None:
         # Return list of maps, optionally filtered by folder
         folder_id = request.args.get('folder_id')
-        if folder_id == 'root':
+        trashed = request.args.get('trashed')
+        if trashed == '1':
             cursor = conn.execute(
-                'SELECT id, title, updated_at, folder_id FROM maps WHERE folder_id IS NULL ORDER BY updated_at DESC'
+                'SELECT id, title, updated_at, folder_id FROM maps WHERE trashed = 1 ORDER BY updated_at DESC'
+            )
+        elif folder_id == 'root':
+            cursor = conn.execute(
+                'SELECT id, title, updated_at, folder_id FROM maps WHERE folder_id IS NULL AND (trashed IS NULL OR trashed = 0) ORDER BY updated_at DESC'
             )
         elif folder_id:
             cursor = conn.execute(
-                'SELECT id, title, updated_at, folder_id FROM maps WHERE folder_id = ? ORDER BY updated_at DESC',
+                'SELECT id, title, updated_at, folder_id FROM maps WHERE folder_id = ? AND (trashed IS NULL OR trashed = 0) ORDER BY updated_at DESC',
                 (folder_id,)
             )
         else:
             cursor = conn.execute(
-                'SELECT id, title, updated_at, folder_id FROM maps ORDER BY updated_at DESC'
+                'SELECT id, title, updated_at, folder_id FROM maps WHERE (trashed IS NULL OR trashed = 0) ORDER BY updated_at DESC'
             )
         maps = []
         for row in cursor:
@@ -206,9 +216,31 @@ def save_map():
 @app.route('/api/maps/<map_id>', methods=['DELETE'])
 @requires_auth
 def delete_map(map_id):
-    """Delete a map."""
+    """Permanently delete a map."""
     conn = get_db()
     conn.execute('DELETE FROM maps WHERE id = ?', (map_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+
+@app.route('/api/maps/<map_id>/trash', methods=['PUT'])
+@requires_auth
+def trash_map(map_id):
+    """Move a map to trash (soft delete)."""
+    conn = get_db()
+    conn.execute('UPDATE maps SET trashed = 1 WHERE id = ?', (map_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+
+@app.route('/api/maps/<map_id>/restore', methods=['PUT'])
+@requires_auth
+def restore_map(map_id):
+    """Restore a map from trash."""
+    conn = get_db()
+    conn.execute('UPDATE maps SET trashed = 0 WHERE id = ?', (map_id,))
     conn.commit()
     conn.close()
     return jsonify({'success': True})
@@ -236,7 +268,7 @@ def get_folders():
     folders = []
     for row in cursor:
         # Count maps in each folder
-        count = conn.execute('SELECT COUNT(*) FROM maps WHERE folder_id = ?', (row['id'],)).fetchone()[0]
+        count = conn.execute('SELECT COUNT(*) FROM maps WHERE folder_id = ? AND (trashed IS NULL OR trashed = 0)', (row['id'],)).fetchone()[0]
         folders.append({
             'id': row['id'],
             'name': row['name'],

@@ -100,7 +100,7 @@ export function layout(map) {
 
     const placed = new Set();
 
-    function place(id, depth, centerY) {
+    function place(id, depth, centerY, direction) {
         if (placed.has(id)) return;
         placed.add(id);
 
@@ -108,15 +108,20 @@ export function layout(map) {
         if (!node) return;
 
         node.depth = depth;
+        node.direction = direction; // 'right' or 'left'
         const colorIndex = Math.min(depth, colors.length - 1);
         node.color = colors[colorIndex] || colors[colors.length - 1] || '#ffffff';
 
-        // Calculate x based on previous nodes' actual widths
+        // Calculate x based on direction
         if (depth === 0) {
             node.x = 0;
         } else {
             const parent = map.nodes[node.parentId];
-            node.x = parent ? parent.x + parent.w + H_GAP : 0;
+            if (direction === 'left') {
+                node.x = parent ? parent.x - H_GAP - node.w : 0;
+            } else {
+                node.x = parent ? parent.x + parent.w + H_GAP : 0;
+            }
         }
 
         node.y = centerY - node.h / 2;
@@ -134,12 +139,66 @@ export function layout(map) {
         validChildren.forEach(c => {
             const h = heights[c] || 40;
             const childCenter = start + h / 2;
-            place(c, depth + 1, childCenter);
+            place(c, depth + 1, childCenter, direction);
             start += h + V_GAP;
         });
     }
 
-    place(map.rootId, 0, 0);
+    // Split root children by their stored 'side' property, or auto-assign
+    const root = map.nodes[map.rootId];
+    if (root) {
+        root.depth = 0;
+        root.direction = 'right';
+        root.x = 0;
+        root.y = -root.h / 2;
+        const colorIndex = 0;
+        root.color = colors[colorIndex] || '#ffffff';
+        placed.add(map.rootId);
+
+        if (!root.collapsed) {
+            const validChildren = (root.children || []).filter(c => map.nodes[c] && heights[c]);
+
+            // Auto-assign side to children that don't have one yet
+            const unassigned = validChildren.filter(c => !map.nodes[c].side);
+            if (unassigned.length > 0) {
+                const rightCount = validChildren.filter(c => map.nodes[c].side === 'right').length;
+                const leftCount = validChildren.filter(c => map.nodes[c].side === 'left').length;
+                unassigned.forEach(c => {
+                    // Balance: assign to the side with fewer children
+                    if (rightCount <= leftCount) {
+                        map.nodes[c].side = 'right';
+                    } else {
+                        map.nodes[c].side = 'left';
+                    }
+                });
+            }
+
+            const rightChildren = validChildren.filter(c => map.nodes[c].side !== 'left');
+            const leftChildren = validChildren.filter(c => map.nodes[c].side === 'left');
+
+            // Place right side
+            let totalR = 0;
+            rightChildren.forEach(c => totalR += heights[c] || 40);
+            totalR += V_GAP * Math.max(0, rightChildren.length - 1);
+            let startR = -totalR / 2;
+            rightChildren.forEach(c => {
+                const h = heights[c] || 40;
+                place(c, 1, startR + h / 2, 'right');
+                startR += h + V_GAP;
+            });
+
+            // Place left side
+            let totalL = 0;
+            leftChildren.forEach(c => totalL += heights[c] || 40);
+            totalL += V_GAP * Math.max(0, leftChildren.length - 1);
+            let startL = -totalL / 2;
+            leftChildren.forEach(c => {
+                const h = heights[c] || 40;
+                place(c, 1, startL + h / 2, 'left');
+                startL += h + V_GAP;
+            });
+        }
+    }
 
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     Object.values(map.nodes).forEach(n => {

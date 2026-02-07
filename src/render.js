@@ -47,12 +47,22 @@ export function render(map, svg, selectedId) {
             const linkId = `${node.parentId}-${id}`;
             currentLinkIds.add(linkId);
 
-            const x1 = parent.x + parent.w;
-            const y1 = parent.y + parent.h / 2;
-            const x2 = node.x;
-            const y2 = node.y + node.h / 2;
+            let x1, y1, x2, y2;
+            if (node.direction === 'left') {
+                x1 = parent.x;
+                y1 = parent.y + parent.h / 2;
+                x2 = node.x + node.w;
+                y2 = node.y + node.h / 2;
+            } else {
+                x1 = parent.x + parent.w;
+                y1 = parent.y + parent.h / 2;
+                x2 = node.x;
+                y2 = node.y + node.h / 2;
+            }
             const curvature = Math.max(40, Math.abs(x2 - x1) / 2);
-            const d = `M${x1},${y1} C${x1 + curvature},${y1} ${x2 - curvature},${y2} ${x2},${y2}`;
+            const d = node.direction === 'left'
+                ? `M${x1},${y1} C${x1 - curvature},${y1} ${x2 + curvature},${y2} ${x2},${y2}`
+                : `M${x1},${y1} C${x1 + curvature},${y1} ${x2 - curvature},${y2} ${x2},${y2}`;
 
             let path = linkElements.get(linkId);
             if (!path) {
@@ -184,7 +194,8 @@ export function render(map, svg, selectedId) {
 
                 g.appendChild(collapseIndicator);
             }
-            collapseIndicator.setAttribute('transform', `translate(${node.w + 15},${node.h / 2})`);
+            const collapseX = node.direction === 'left' ? -15 : node.w + 15;
+            collapseIndicator.setAttribute('transform', `translate(${collapseX},${node.h / 2})`);
             // Show count of hidden children
             const countText = collapseIndicator.querySelector('text');
             countText.textContent = node.children.length;

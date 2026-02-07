@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Connexion - MindMap</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="auth-page">
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <h1>MindMap</h1>
+                <p>Connectez-vous pour acceder a vos cartes</p>
+            </div>
+            <form id="loginForm" class="auth-form">
+                <div class="form-group">
+                    <label for="username">Nom d'utilisateur</label>
+                    <input type="text" id="username" name="username" required autocomplete="username" autofocus>
+                </div>
+                <div class="form-group">
+                    <label for="password">Mot de passe</label>
+                    <input type="password" id="password" name="password" required autocomplete="current-password">
+                </div>
+                <div id="loginError" class="auth-error hidden"></div>
+                <button type="submit" class="auth-btn">Se connecter</button>
+            </form>
+        </div>
+    </div>
+    <script>
+        const form = document.getElementById('loginForm');
+        const errorEl = document.getElementById('loginError');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            errorEl.classList.add('hidden');
+            errorEl.textContent = '';
+
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+
+            if (!username || !password) {
+                errorEl.textContent = 'Veuillez remplir tous les champs.';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+
+            const btn = form.querySelector('button[type="submit"]');
+            btn.disabled = true;
+            btn.textContent = 'Connexion...';
+
+            try {
+                const resp = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await resp.json();
+
+                if (!resp.ok) {
+                    errorEl.textContent = data.error || 'Erreur de connexion';
+                    errorEl.classList.remove('hidden');
+                    btn.disabled = false;
+                    btn.textContent = 'Se connecter';
+                    return;
+                }
+
+                window.location.href = '/';
+            } catch (err) {
+                errorEl.textContent = 'Impossible de contacter le serveur.';
+                errorEl.classList.remove('hidden');
+                btn.disabled = false;
+                btn.textContent = 'Se connecter';
+            }
+        });
+    </script>
+</body>
+</html>

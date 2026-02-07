@@ -12,14 +12,15 @@ import {
     isDescendant,
     copySubtree,
     pasteSubtree,
-    toggleCollapse
+    toggleCollapse,
+    setNodeSide
 } from './model.js';
 import { layout } from './layout.js';
 import { render, clearRenderCache } from './render.js';
 import { exportMarkdown, exportImage, exportPdf } from './export.js';
 
 const MAPS_ENDPOINT = '/api/maps';
-const LAST_MAP_STORAGE_KEY = 'mindmap:lastMapId';
+let LAST_MAP_STORAGE_KEY = 'mindmap:lastMapId';
 
 const viewport = document.getElementById('viewport');
 const svgElement = document.getElementById('mindmap');
@@ -57,6 +58,11 @@ const autosaveDelayInput = document.getElementById('autosaveDelayInput');
 const configCancelBtn = document.getElementById('configCancelBtn');
 const newFolderBtn = document.getElementById('newFolderBtn');
 const breadcrumbEl = document.getElementById('breadcrumb');
+const currentUserDisplay = document.getElementById('currentUserDisplay');
+const adminBtn = document.getElementById('adminBtn');
+const logoutBtn = document.getElementById('logoutBtn');
+
+let currentUser = null;
 
 let map = null;
 let selectedId = null;
@@ -90,11 +96,34 @@ let viewingTrash = false;
 init();
 
 async function init() {
+    await loadCurrentUser();
     updateSaveStatus();
     wireUI();
     updateRemoteUIState();
     showApp();
     await loadInitialMap();
+}
+
+async function loadCurrentUser() {
+    try {
+        const resp = await fetch('/api/auth/me');
+        if (resp.status === 401) {
+            window.location.href = '/login';
+            return;
+        }
+        if (resp.ok) {
+            currentUser = await resp.json();
+            LAST_MAP_STORAGE_KEY = `mindmap:lastMapId:${currentUser.id}`;
+            if (currentUserDisplay) {
+                currentUserDisplay.textContent = currentUser.displayName || currentUser.username;
+            }
+            if (adminBtn && currentUser.isAdmin) {
+                adminBtn.classList.remove('hidden');
+            }
+        }
+    } catch {
+        // Network error, continue offline
+    }
 }
 
 function wireUI() {
@@ -407,6 +436,21 @@ function wireUI() {
         scheduleUpdate();
     }, { passive: false });
 
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', async () => {
+            try {
+                await fetch('/api/auth/logout', { method: 'POST' });
+            } catch {}
+            window.location.href = '/login';
+        });
+    }
+
+    if (adminBtn) {
+        adminBtn.addEventListener('click', () => {
+            window.location.href = '/admin';
+        });
+    }
+
     window.addEventListener('keydown', e => {
         if (!map) return;
         if (e.target instanceof HTMLInputElement) return;
@@ -449,12 +493,22 @@ function wireUI() {
                 update();
                 markMapChanged();
             }
-        } else if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && e.shiftKey) {
+        } else if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && e.ctrlKey) {
             e.preventDefault();
             if (moveSibling(map, selectedId, e.key === 'ArrowUp' ? -1 : 1)) {
                 markLayoutDirty();
                 update();
                 markMapChanged();
+            }
+        } else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && e.ctrlKey) {
+            e.preventDefault();
+            if (selectedId && map.nodes[selectedId]?.parentId === map.rootId) {
+                const newSide = e.key === 'ArrowLeft' ? 'left' : 'right';
+                if (setNodeSide(map, selectedId, newSide)) {
+                    markLayoutDirty();
+                    update();
+                    markMapChanged();
+                }
             }
         } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
             startEditing(selectedId, e.key);
@@ -649,6 +703,7 @@ function updateNodeDrag(event) {
     }
     if (!dragState.hasMoved) return;
     event.preventDefault();
+    dragState.lastClientX = event.clientX;
     positionDragPreview(event.clientX, event.clientY);
 
     // Throttle drop target detection
@@ -676,7 +731,7 @@ function updateNodeDrag(event) {
 
 function endNodeDrag() {
     if (!dragState || !map) return;
-    const { preview, originEl, id, hasMoved } = dragState;
+    const { preview, originEl, id, hasMoved, lastClientX } = dragState;
     if (preview && preview.parentNode) {
         preview.parentNode.removeChild(preview);
     }
@@ -688,6 +743,15 @@ function endNodeDrag() {
     clearDropTarget();
     dragState = null;
     if (targetId && reparentNode(map, id, targetId)) {
+        // If dropped on root, determine side from cursor position
+        if (targetId === map.rootId) {
+            const rootNode = map.nodes[map.rootId];
+            const svgEl = document.getElementById('mindmap');
+            const svgRect = svgEl.getBoundingClientRect();
+            const rootCenterScreen = svgRect.left + svgRect.width / 2 + (rootNode.x + rootNode.w / 2) * pan.scale + pan.x;
+            const side = (lastClientX || 0) < rootCenterScreen ? 'left' : 'right';
+            setNodeSide(map, id, side);
+        }
         selectedId = id;
         markLayoutDirty();
         update();
@@ -1297,13 +1361,16 @@ async function loadMapById(id, { silentError = false } = {}) {
             headers: getAuthHeaders(),
             credentials: 'include'
         });
-        if (resp.status === 401 || resp.status === 403) {
-            disableRemote('Accès refusé par l’API distante. Vérifiez la clé API configurée.');
-            throw new Error('Accès refusé par l’API distante.');
+        if (resp.status === 401) {
+            window.location.href = '/login';
+            return false;
+        }
+        if (resp.status === 403) {
+            // Map belongs to another user, just skip
+            return false;
         }
         if (resp.status === 404) {
-            disableRemote('Endpoint distant introuvable.');
-            throw new Error('API distante introuvable.');
+            return false;
         }
         if (!resp.ok) {
             throw new Error(`Chargement impossible (${resp.status})`);
@@ -1323,7 +1390,7 @@ async function loadMapById(id, { silentError = false } = {}) {
             alert(err.message || 'Impossible de charger la carte.');
         }
         if (isNetworkError(err)) {
-            disableRemote('Impossible de contacter l’API distante.');
+            disableRemote('Impossible de contacter l\'API distante.');
         }
         return false;
     }
@@ -1342,8 +1409,12 @@ async function fetchMapSummaries(folderId) {
             headers: getAuthHeaders(),
             credentials: 'include'
         });
-        if (resp.status === 401 || resp.status === 403) {
-            disableRemote('Accès refusé par l’API distante. Vérifiez la clé API configurée.');
+        if (resp.status === 401) {
+            window.location.href = '/login';
+            return [];
+        }
+        if (resp.status === 403) {
+            disableRemote('Acces refuse.');
             return [];
         }
         if (resp.status === 404) {
@@ -1357,7 +1428,7 @@ async function fetchMapSummaries(folderId) {
     } catch (err) {
         console.error(err);
         if (isNetworkError(err)) {
-            disableRemote('Impossible de contacter l’API distante.');
+            disableRemote('Impossible de contacter l\'API distante.');
         }
         return [];
     }
@@ -1418,9 +1489,13 @@ async function runAutosave() {
             credentials: 'include',
             body: JSON.stringify(payload)
         });
-        if (resp.status === 401 || resp.status === 403) {
-            disableRemote('Accès refusé par l’API distante. Vérifiez la clé API configurée.');
-            throw new Error('Accès refusé par l’API distante.');
+        if (resp.status === 401) {
+            window.location.href = '/login';
+            return;
+        }
+        if (resp.status === 403) {
+            disableRemote('Acces refuse.');
+            throw new Error('Acces refuse.');
         }
         if (resp.status === 404) {
             disableRemote('Endpoint distant introuvable.');
@@ -1447,7 +1522,7 @@ async function runAutosave() {
         lastSaveError = err;
         autosavePending = true;
         if (isNetworkError(err)) {
-            disableRemote('Impossible de contacter l’API distante.');
+            disableRemote('Impossible de contacter l\'API distante.');
         }
     } finally {
         autosaveInFlight = false;

@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>MindMap Minimal</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MindMap</title>
     <link rel="stylesheet" href="styles.css">
     <!-- Optionally expose a bearer token for the persistence API via meta or script injection -->
     <!-- <meta name="mindmap-api-token" content=""> -->
@@ -13,22 +14,28 @@
             <input id="mapTitleInput" type="text" value="MindMap" autocomplete="off" spellcheck="false">
             <div id="saveStatus" class="status">Sauvegarde en attente…</div>
             <div class="map-header-actions">
+                <span id="currentUserDisplay" class="user-display"></span>
                 <button id="remoteLoadBtn">Cartes</button>
+                <button id="adminBtn" class="hidden">Admin</button>
+                <button id="logoutBtn">Deconnexion</button>
             </div>
         </div>
         <div id="toolbar">
-            <button id="newBtn">New</button>
-            <button id="addChildBtn">Add Child (Tab)</button>
-            <button id="addSiblingBtn">Add Sibling (Enter)</button>
-            <button id="deleteBtn">Delete (Del)</button>
+            <button id="newBtn">Nouveau</button>
+            <button id="addChildBtn">Enfant (Tab)</button>
+            <button id="addSiblingBtn">Voisin (Enter)</button>
+            <button id="deleteBtn">Supprimer (Del)</button>
+            <span class="tb-sep"></span>
             <button id="imageBtn">Image</button>
-            <button id="saveBtn">Save JSON</button>
-            <button id="loadBtn">Load JSON</button>
-            <button id="exportPdfBtn">Export PDF</button>
-            <button id="exportImageBtn">Export Image</button>
-            <button id="exportMdBtn">Export MD</button>
-            <button id="fitBtn">Fit</button>
-            <button id="configBtn">Configuration</button>
+            <button id="fitBtn">Centrer</button>
+            <span class="tb-sep"></span>
+            <button id="saveBtn">JSON</button>
+            <button id="loadBtn">Ouvrir</button>
+            <button id="exportPdfBtn">PDF</button>
+            <button id="exportImageBtn">PNG</button>
+            <button id="exportMdBtn">MD</button>
+            <span class="tb-sep"></span>
+            <button id="configBtn">Config</button>
             <button id="remoteSaveBtn" class="hidden">Sauvegarder</button>
             <input type="file" id="imageInput" accept="image/*" style="display:none">
             <input type="file" id="loadInput" accept="application/json" style="display:none">

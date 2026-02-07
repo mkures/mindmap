@@ -163,7 +163,8 @@ export function copySubtree(map, nodeId) {
             parentId: n.parentId,
             text: n.text,
             children: [...(n.children || [])],
-            color: n.color
+            color: n.color,
+            side: n.side
         };
         if (n.media) {
             subtree.nodes[id].media = { ...n.media };
@@ -215,6 +216,16 @@ export function pasteSubtree(map, subtree, targetId) {
     map.updatedAt = Date.now();
 
     return newRootId;
+}
+
+// Set which side a root child appears on ('left' or 'right')
+export function setNodeSide(map, nodeId, side) {
+    const node = map.nodes[nodeId];
+    if (!node) return false;
+    if (node.parentId !== map.rootId) return false;
+    node.side = side;
+    map.updatedAt = Date.now();
+    return true;
 }
 
 // Toggle collapsed state of a node

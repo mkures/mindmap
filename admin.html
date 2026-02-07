@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Administration - MindMap</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="admin-page">
+    <div class="admin-container">
+        <div class="admin-header">
+            <h1>Administration</h1>
+            <div class="admin-header-actions">
+                <a href="/" class="admin-link">Retour a l'editeur</a>
+                <button id="logoutBtn" class="admin-btn-outline">Deconnexion</button>
+            </div>
+        </div>
+
+        <div class="admin-section">
+            <div class="admin-section-header">
+                <h2>Utilisateurs</h2>
+                <button id="addUserBtn" class="admin-btn-primary">Nouvel utilisateur</button>
+            </div>
+            <div id="userList" class="admin-list">
+                <div class="admin-list-empty">Chargement...</div>
+            </div>
+        </div>
+
+        <!-- Add/Edit User Modal -->
+        <div id="userModalBackdrop" class="modal-backdrop hidden"></div>
+        <div id="userModal" class="modal hidden">
+            <div class="modal-content">
+                <h2 id="userModalTitle">Nouvel utilisateur</h2>
+                <form id="userForm">
+                    <input type="hidden" id="editUserId">
+                    <div class="form-group">
+                        <label for="newUsername">Nom d'utilisateur</label>
+                        <input type="text" id="newUsername" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="newDisplayName">Nom d'affichage</label>
+                        <input type="text" id="newDisplayName" placeholder="Optionnel">
+                    </div>
+                    <div class="form-group">
+                        <label for="newPassword" id="passwordLabel">Mot de passe</label>
+                        <input type="password" id="newPassword">
+                        <small id="passwordHint" class="hidden" style="color:var(--text-tertiary);font-size:12px;">Laisser vide pour ne pas modifier</small>
+                    </div>
+                    <div id="userFormError" class="auth-error hidden"></div>
+                    <div class="modal-actions">
+                        <button type="button" id="cancelUserBtn" class="secondary">Annuler</button>
+                        <button type="submit">Enregistrer</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const userList = document.getElementById('userList');
+        const addUserBtn = document.getElementById('addUserBtn');
+        const userModal = document.getElementById('userModal');
+        const userModalBackdrop = document.getElementById('userModalBackdrop');
+        const userModalTitle = document.getElementById('userModalTitle');
+        const userForm = document.getElementById('userForm');
+        const userFormError = document.getElementById('userFormError');
+        const editUserId = document.getElementById('editUserId');
+        const newUsername = document.getElementById('newUsername');
+        const newDisplayName = document.getElementById('newDisplayName');
+        const newPassword = document.getElementById('newPassword');
+        const passwordLabel = document.getElementById('passwordLabel');
+        const passwordHint = document.getElementById('passwordHint');
+        const cancelUserBtn = document.getElementById('cancelUserBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+
+        let currentUser = null;
+
+        async function init() {
+            try {
+                const resp = await fetch('/api/auth/me');
+                if (!resp.ok) { window.location.href = '/login'; return; }
+                currentUser = await resp.json();
+                if (!currentUser.isAdmin) { window.location.href = '/'; return; }
+            } catch {
+                window.location.href = '/login';
+                return;
+            }
+            loadUsers();
+        }
+
+        async function loadUsers() {
+            try {
+                const resp = await fetch('/api/admin/users');
+                if (resp.status === 401) { window.location.href = '/login'; return; }
+                if (resp.status === 403) { window.location.href = '/'; return; }
+                const users = await resp.json();
+                renderUsers(users);
+            } catch {
+                userList.innerHTML = '<div class="admin-list-empty">Erreur de chargement</div>';
+            }
+        }
+
+        function renderUsers(users) {
+            userList.innerHTML = '';
+            if (!users.length) {
+                userList.innerHTML = '<div class="admin-list-empty">Aucun utilisateur</div>';
+                return;
+            }
+            users.forEach(user => {
+                const row = document.createElement('div');
+                row.className = 'admin-list-item';
+
+                const info = document.createElement('div');
+                info.className = 'admin-user-info';
+
+                const name = document.createElement('span');
+                name.className = 'admin-user-name';
+                name.textContent = user.displayName || user.username;
+                if (user.isAdmin) {
+                    const badge = document.createElement('span');
+                    badge.className = 'admin-badge';
+                    badge.textContent = 'admin';
+                    name.appendChild(badge);
+                }
+
+                const meta = document.createElement('span');
+                meta.className = 'admin-user-meta';
+                meta.textContent = `@${user.username} \u00b7 ${user.mapCount} carte(s)`;
+
+                info.appendChild(name);
+                info.appendChild(meta);
+
+                const actions = document.createElement('div');
+                actions.className = 'admin-user-actions';
+
+                const editBtn = document.createElement('button');
+                editBtn.className = 'admin-btn-outline';
+                editBtn.textContent = 'Modifier';
+                editBtn.onclick = () => openEditUser(user);
+                actions.appendChild(editBtn);
+
+                if (!user.isAdmin) {
+                    const delBtn = document.createElement('button');
+                    delBtn.className = 'admin-btn-danger';
+                    delBtn.textContent = 'Supprimer';
+                    delBtn.onclick = () => deleteUser(user);
+                    actions.appendChild(delBtn);
+                }
+
+                row.appendChild(info);
+                row.appendChild(actions);
+                userList.appendChild(row);
+            });
+        }
+
+        function openAddUser() {
+            userModalTitle.textContent = 'Nouvel utilisateur';
+            editUserId.value = '';
+            newUsername.value = '';
+            newUsername.disabled = false;
+            newDisplayName.value = '';
+            newPassword.value = '';
+            newPassword.required = true;
+            passwordLabel.textContent = 'Mot de passe';
+            passwordHint.classList.add('hidden');
+            userFormError.classList.add('hidden');
+            userModal.classList.remove('hidden');
+            userModalBackdrop.classList.remove('hidden');
+            newUsername.focus();
+        }
+
+        function openEditUser(user) {
+            userModalTitle.textContent = 'Modifier l\'utilisateur';
+            editUserId.value = user.id;
+            newUsername.value = user.username;
+            newUsername.disabled = true;
+            newDisplayName.value = user.displayName || '';
+            newPassword.value = '';
+            newPassword.required = false;
+            passwordLabel.textContent = 'Nouveau mot de passe';
+            passwordHint.classList.remove('hidden');
+            userFormError.classList.add('hidden');
+            userModal.classList.remove('hidden');
+            userModalBackdrop.classList.remove('hidden');
+            newDisplayName.focus();
+        }
+
+        function closeModal() {
+            userModal.classList.add('hidden');
+            userModalBackdrop.classList.add('hidden');
+        }
+
+        async function deleteUser(user) {
+            if (!confirm(`Supprimer l'utilisateur "${user.displayName || user.username}" et toutes ses cartes ?`)) return;
+            try {
+                const resp = await fetch(`/api/admin/users/${user.id}`, { method: 'DELETE' });
+                if (!resp.ok) {
+                    const data = await resp.json();
+                    alert(data.error || 'Erreur');
+                    return;
+                }
+                loadUsers();
+            } catch {
+                alert('Erreur reseau');
+            }
+        }
+
+        userForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            userFormError.classList.add('hidden');
+
+            const userId = editUserId.value;
+            const isEdit = !!userId;
+
+            if (isEdit) {
+                const body = { displayName: newDisplayName.value.trim() };
+                if (newPassword.value) body.password = newPassword.value;
+                try {
+                    const resp = await fetch(`/api/admin/users/${userId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
+                    const data = await resp.json();
+                    if (!resp.ok) {
+                        userFormError.textContent = data.error || 'Erreur';
+                        userFormError.classList.remove('hidden');
+                        return;
+                    }
+                    closeModal();
+                    loadUsers();
+                } catch {
+                    userFormError.textContent = 'Erreur reseau';
+                    userFormError.classList.remove('hidden');
+                }
+            } else {
+                const body = {
+                    username: newUsername.value.trim(),
+                    password: newPassword.value,
+                    displayName: newDisplayName.value.trim()
+                };
+                try {
+                    const resp = await fetch('/api/admin/users', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
+                    const data = await resp.json();
+                    if (!resp.ok) {
+                        userFormError.textContent = data.error || 'Erreur';
+                        userFormError.classList.remove('hidden');
+                        return;
+                    }
+                    closeModal();
+                    loadUsers();
+                } catch {
+                    userFormError.textContent = 'Erreur reseau';
+                    userFormError.classList.remove('hidden');
+                }
+            }
+        });
+
+        addUserBtn.addEventListener('click', openAddUser);
+        cancelUserBtn.addEventListener('click', closeModal);
+        userModalBackdrop.addEventListener('click', closeModal);
+
+        logoutBtn.addEventListener('click', async () => {
+            await fetch('/api/auth/logout', { method: 'POST' });
+            window.location.href = '/login';
+        });
+
+        init();
+    </script>
+</body>
+</html>

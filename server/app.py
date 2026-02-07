@@ -250,6 +250,31 @@ def admin_page():
     return send_from_directory(app.static_folder, 'admin.html')
 
 
+@app.route('/api/admin/backup', methods=['GET'])
+@requires_admin
+def backup_db():
+    """Download the SQLite database file."""
+    import shutil
+    import tempfile
+    db_path = os.path.abspath(DB_PATH)
+    # Copy to temp file to avoid locking issues
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
+    tmp.close()
+    conn = get_db()
+    conn.execute('BEGIN IMMEDIATE')
+    shutil.copy2(db_path, tmp.name)
+    conn.rollback()
+    conn.close()
+    from flask import send_file
+    timestamp = time.strftime('%Y%m%d-%H%M%S')
+    return send_file(
+        tmp.name,
+        mimetype='application/x-sqlite3',
+        as_attachment=True,
+        download_name=f'mindmap-backup-{timestamp}.db'
+    )
+
+
 @app.route('/api/admin/users', methods=['GET'])
 @requires_admin
 def list_users():

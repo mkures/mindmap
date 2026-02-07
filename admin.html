@@ -18,6 +18,19 @@
 
         <div class="admin-section">
             <div class="admin-section-header">
+                <h2>Sauvegarde</h2>
+            </div>
+            <div class="admin-list-item" style="justify-content:space-between">
+                <div class="admin-user-info">
+                    <span class="admin-user-name">Base de donnees complete</span>
+                    <span class="admin-user-meta">Utilisateurs, cartes, dossiers — un seul fichier .db</span>
+                </div>
+                <button id="backupBtn" class="admin-btn-primary">Telecharger</button>
+            </div>
+        </div>
+
+        <div class="admin-section">
+            <div class="admin-section-header">
                 <h2>Utilisateurs</h2>
                 <button id="addUserBtn" class="admin-btn-primary">Nouvel utilisateur</button>
             </div>
@@ -258,6 +271,10 @@
                     userFormError.classList.remove('hidden');
                 }
             }
+        });
+
+        document.getElementById('backupBtn').addEventListener('click', () => {
+            window.location.href = '/api/admin/backup';
         });
 
         addUserBtn.addEventListener('click', openAddUser);

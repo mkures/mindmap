@@ -269,3 +269,145 @@ body.dragging-node {
 .map-list-actions button {
     padding: 6px 12px;
 }
+
+/* Breadcrumb */
+.breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 14px;
+    margin-bottom: 8px;
+    color: #666;
+}
+
+.breadcrumb-item {
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.breadcrumb-item:not(.active) {
+    color: #2563eb;
+    cursor: pointer;
+}
+
+.breadcrumb-item:not(.active):hover {
+    background: #eef2ff;
+}
+
+.breadcrumb-item.active {
+    font-weight: 600;
+    color: #333;
+}
+
+.breadcrumb-sep {
+    color: #999;
+}
+
+/* Folder items */
+.folder-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid #d4a843;
+    background: #fef9ee;
+    cursor: pointer;
+}
+
+.folder-item:hover {
+    border-color: #b8860b;
+    background: #fdf3d7;
+}
+
+.folder-label {
+    font-weight: 600;
+}
+
+.folder-label::before {
+    content: '\1F4C1 ';
+}
+
+.folder-meta {
+    font-size: 12px;
+    color: #888;
+}
+
+/* Map items in folder view */
+.map-list button {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    background: #fafafa;
+    cursor: pointer;
+}
+
+.map-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    text-align: left;
+}
+
+.map-item-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.map-action-btn {
+    font-size: 12px;
+    color: #2563eb;
+    cursor: pointer;
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+
+.map-action-btn:hover {
+    background: #eef2ff;
+}
+
+/* Context menu */
+.context-menu {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 20;
+    overflow: hidden;
+    min-width: 160px;
+}
+
+.context-menu button {
+    display: block;
+    width: 100%;
+    padding: 8px 16px;
+    border: none;
+    background: none;
+    text-align: left;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.context-menu button:hover {
+    background: #eef2ff;
+}
+
+.context-menu button:disabled {
+    color: #ccc;
+    cursor: default;
+}
+
+.context-menu button:disabled:hover {
+    background: none;
+}
+
+.move-menu-header {
+    padding: 8px 16px;
+    font-weight: 600;
+    font-size: 13px;
+    color: #666;
+    border-bottom: 1px solid #eee;
+}

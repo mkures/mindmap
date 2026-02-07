@@ -50,6 +50,19 @@ def init_db():
                 updated_at INTEGER
             )
         ''')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS folders (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                created_at INTEGER,
+                updated_at INTEGER
+            )
+        ''')
+        # Add folder_id column to maps if it doesn't exist
+        try:
+            conn.execute('ALTER TABLE maps ADD COLUMN folder_id TEXT')
+        except sqlite3.OperationalError:
+            pass  # Column already exists
         conn.commit()
         conn.close()
         print(f"[DB] Database initialized successfully", flush=True)
@@ -95,16 +108,28 @@ def get_maps():
     conn = get_db()
 
     if map_id == '0' or map_id is None:
-        # Return list of all maps
-        cursor = conn.execute(
-            'SELECT id, title, updated_at FROM maps ORDER BY updated_at DESC'
-        )
+        # Return list of maps, optionally filtered by folder
+        folder_id = request.args.get('folder_id')
+        if folder_id == 'root':
+            cursor = conn.execute(
+                'SELECT id, title, updated_at, folder_id FROM maps WHERE folder_id IS NULL ORDER BY updated_at DESC'
+            )
+        elif folder_id:
+            cursor = conn.execute(
+                'SELECT id, title, updated_at, folder_id FROM maps WHERE folder_id = ? ORDER BY updated_at DESC',
+                (folder_id,)
+            )
+        else:
+            cursor = conn.execute(
+                'SELECT id, title, updated_at, folder_id FROM maps ORDER BY updated_at DESC'
+            )
         maps = []
         for row in cursor:
             maps.append({
                 'id': row['id'],
                 'title': row['title'],
-                'updatedAt': row['updated_at']
+                'updatedAt': row['updated_at'],
+                'folderId': row['folder_id']
             })
         conn.close()
         return jsonify(maps)
@@ -184,6 +209,84 @@ def delete_map(map_id):
     """Delete a map."""
     conn = get_db()
     conn.execute('DELETE FROM maps WHERE id = ?', (map_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+
+@app.route('/api/maps/<map_id>/move', methods=['PUT'])
+@requires_auth
+def move_map(map_id):
+    """Move a map to a folder."""
+    data = request.get_json()
+    folder_id = data.get('folderId')  # None or null = move to root
+    conn = get_db()
+    conn.execute('UPDATE maps SET folder_id = ? WHERE id = ?', (folder_id, map_id))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+
+@app.route('/api/folders', methods=['GET'])
+@requires_auth
+def get_folders():
+    """List all folders."""
+    conn = get_db()
+    cursor = conn.execute('SELECT id, name, created_at, updated_at FROM folders ORDER BY name')
+    folders = []
+    for row in cursor:
+        # Count maps in each folder
+        count = conn.execute('SELECT COUNT(*) FROM maps WHERE folder_id = ?', (row['id'],)).fetchone()[0]
+        folders.append({
+            'id': row['id'],
+            'name': row['name'],
+            'mapCount': count,
+            'createdAt': row['created_at'],
+            'updatedAt': row['updated_at']
+        })
+    conn.close()
+    return jsonify(folders)
+
+
+@app.route('/api/folders', methods=['POST'])
+@requires_auth
+def create_folder():
+    """Create a new folder."""
+    data = request.get_json()
+    name = data.get('name', 'Nouveau dossier')
+    now = int(time.time() * 1000)
+    folder_id = f'folder-{uuid.uuid4().hex[:12]}'
+    conn = get_db()
+    conn.execute(
+        'INSERT INTO folders (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)',
+        (folder_id, name, now, now)
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({'id': folder_id, 'name': name, 'createdAt': now, 'updatedAt': now})
+
+
+@app.route('/api/folders/<folder_id>', methods=['PUT'])
+@requires_auth
+def rename_folder(folder_id):
+    """Rename a folder."""
+    data = request.get_json()
+    name = data.get('name', '')
+    now = int(time.time() * 1000)
+    conn = get_db()
+    conn.execute('UPDATE folders SET name = ?, updated_at = ? WHERE id = ?', (name, now, folder_id))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+
+@app.route('/api/folders/<folder_id>', methods=['DELETE'])
+@requires_auth
+def delete_folder(folder_id):
+    """Delete a folder. Maps in the folder are moved to root."""
+    conn = get_db()
+    conn.execute('UPDATE maps SET folder_id = NULL WHERE folder_id = ?', (folder_id,))
+    conn.execute('DELETE FROM folders WHERE id = ?', (folder_id,))
     conn.commit()
     conn.close()
     return jsonify({'success': True})

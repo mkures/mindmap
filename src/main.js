@@ -55,6 +55,8 @@ const fontFamilyInput = document.getElementById('fontFamilyInput');
 const fontSizeInput = document.getElementById('fontSizeInput');
 const autosaveDelayInput = document.getElementById('autosaveDelayInput');
 const configCancelBtn = document.getElementById('configCancelBtn');
+const newFolderBtn = document.getElementById('newFolderBtn');
+const breadcrumbEl = document.getElementById('breadcrumb');
 
 let map = null;
 let selectedId = null;
@@ -79,6 +81,10 @@ let autosaveInFlight = false;
 let lastSaveError = null;
 
 let clipboard = null; // Stores copied subtree
+
+let currentFolderId = null; // null = root
+let currentFolderName = null;
+let allFolders = [];
 
 init();
 
@@ -294,6 +300,10 @@ function wireUI() {
             if (!map) return;
             exportMarkdown(map);
         };
+    }
+
+    if (newFolderBtn) {
+        newFolderBtn.onclick = createFolder;
     }
 
     if (configBtn) {
@@ -850,6 +860,8 @@ function addColorInput(index, value) {
 
 function openMapList() {
     if (!ensureRemoteEnabled()) return;
+    currentFolderId = null;
+    currentFolderName = null;
     mapListModal.classList.remove('hidden');
     modalBackdrop.classList.remove('hidden');
     refreshMapList();
@@ -865,39 +877,285 @@ function closeMapList() {
 async function refreshMapList() {
     if (!ensureRemoteEnabled()) return;
     mapListContainer.innerHTML = '<div class="map-list-empty">Chargement…</div>';
-    const list = await fetchMapSummaries();
+    const [folders, maps] = await Promise.all([
+        fetchFolders(),
+        fetchMapSummaries(currentFolderId)
+    ]);
+    allFolders = folders;
     if (!remoteAvailable) {
         mapListContainer.innerHTML = `<div class="map-list-empty">${remoteDisabledMessage}</div>`;
         return;
     }
-    renderMapList(list);
+    updateBreadcrumb();
+    renderMapList(folders, maps);
 }
 
-function renderMapList(list) {
-    if (!list.length) {
+function updateBreadcrumb() {
+    if (!breadcrumbEl) return;
+    breadcrumbEl.innerHTML = '';
+    const root = document.createElement('span');
+    root.className = 'breadcrumb-item' + (currentFolderId ? '' : ' active');
+    root.textContent = 'Racine';
+    if (currentFolderId) {
+        root.style.cursor = 'pointer';
+        root.onclick = () => navigateToFolder(null, null);
+    }
+    breadcrumbEl.appendChild(root);
+
+    if (currentFolderId && currentFolderName) {
+        const sep = document.createElement('span');
+        sep.className = 'breadcrumb-sep';
+        sep.textContent = ' > ';
+        breadcrumbEl.appendChild(sep);
+
+        const folder = document.createElement('span');
+        folder.className = 'breadcrumb-item active';
+        folder.textContent = currentFolderName;
+        breadcrumbEl.appendChild(folder);
+    }
+}
+
+function navigateToFolder(folderId, folderName) {
+    currentFolderId = folderId;
+    currentFolderName = folderName;
+    refreshMapList();
+}
+
+function renderMapList(folders, maps) {
+    mapListContainer.innerHTML = '';
+
+    // Show folders (only at root level)
+    if (!currentFolderId && folders.length) {
+        folders.forEach(folder => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'folder-item';
+
+            const left = document.createElement('span');
+            left.className = 'folder-label';
+            left.textContent = folder.name || 'Sans nom';
+
+            const right = document.createElement('span');
+            right.className = 'folder-meta';
+            right.textContent = `${folder.mapCount || 0} carte(s)`;
+
+            btn.appendChild(left);
+            btn.appendChild(right);
+
+            btn.addEventListener('click', () => navigateToFolder(folder.id, folder.name));
+
+            // Right-click for folder actions
+            btn.addEventListener('contextmenu', e => {
+                e.preventDefault();
+                showFolderActions(folder, btn);
+            });
+
+            mapListContainer.appendChild(btn);
+        });
+    }
+
+    // Show maps
+    if (!maps.length && !folders.length) {
         mapListContainer.innerHTML = '<div class="map-list-empty">Aucune carte enregistrée pour le moment.</div>';
         return;
     }
-    mapListContainer.innerHTML = '';
-    list.forEach(item => {
-        const button = document.createElement('button');
-        button.type = 'button';
+    if (!maps.length && currentFolderId) {
+        const empty = document.createElement('div');
+        empty.className = 'map-list-empty';
+        empty.textContent = 'Ce dossier est vide.';
+        mapListContainer.appendChild(empty);
+        return;
+    }
+
+    maps.forEach(item => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+
+        const left = document.createElement('div');
+        left.className = 'map-info';
+
         const title = document.createElement('span');
         title.className = 'map-title';
         title.textContent = item.title || 'Sans titre';
+
         const meta = document.createElement('span');
         meta.className = 'map-meta';
-        const updated = item.updatedAt ? new Date(item.updatedAt).toLocaleString() : '';
-        meta.textContent = item.description || updated || '';
-        button.appendChild(title);
-        button.appendChild(meta);
-        button.addEventListener('click', async () => {
+        meta.textContent = item.updatedAt ? new Date(item.updatedAt).toLocaleString() : '';
+
+        left.appendChild(title);
+        left.appendChild(meta);
+        btn.appendChild(left);
+
+        // Action buttons
+        const actions = document.createElement('div');
+        actions.className = 'map-item-actions';
+
+        const moveBtn = document.createElement('span');
+        moveBtn.className = 'map-action-btn';
+        moveBtn.textContent = 'Deplacer';
+        moveBtn.title = 'Deplacer dans un dossier';
+        moveBtn.addEventListener('click', e => {
+            e.stopPropagation();
+            showMoveDialog(item);
+        });
+        actions.appendChild(moveBtn);
+
+        btn.appendChild(actions);
+
+        btn.addEventListener('click', async () => {
             if (await loadMapById(item.id)) {
                 closeMapList();
             }
         });
-        mapListContainer.appendChild(button);
+        mapListContainer.appendChild(btn);
     });
+}
+
+async function fetchFolders() {
+    if (!ensureRemoteEnabled({ silent: true })) return [];
+    try {
+        const resp = await fetch('/api/folders', {
+            headers: getAuthHeaders(),
+            credentials: 'include'
+        });
+        if (!resp.ok) return [];
+        return await resp.json();
+    } catch {
+        return [];
+    }
+}
+
+async function createFolder() {
+    const name = prompt('Nom du dossier:');
+    if (!name || !name.trim()) return;
+    try {
+        const resp = await fetch('/api/folders', {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            credentials: 'include',
+            body: JSON.stringify({ name: name.trim() })
+        });
+        if (resp.ok) refreshMapList();
+    } catch (err) {
+        console.error('Failed to create folder:', err);
+    }
+}
+
+function showFolderActions(folder, btnEl) {
+    // Remove existing menu
+    document.querySelectorAll('.context-menu').forEach(m => m.remove());
+
+    const menu = document.createElement('div');
+    menu.className = 'context-menu';
+
+    const renameOption = document.createElement('button');
+    renameOption.textContent = 'Renommer';
+    renameOption.onclick = async () => {
+        menu.remove();
+        const newName = prompt('Nouveau nom:', folder.name);
+        if (!newName || !newName.trim()) return;
+        await fetch(`/api/folders/${folder.id}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            credentials: 'include',
+            body: JSON.stringify({ name: newName.trim() })
+        });
+        refreshMapList();
+    };
+
+    const deleteOption = document.createElement('button');
+    deleteOption.textContent = 'Supprimer';
+    deleteOption.onclick = async () => {
+        menu.remove();
+        if (!confirm(`Supprimer le dossier "${folder.name}" ? Les cartes seront deplacees a la racine.`)) return;
+        await fetch(`/api/folders/${folder.id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders(),
+            credentials: 'include'
+        });
+        refreshMapList();
+    };
+
+    menu.appendChild(renameOption);
+    menu.appendChild(deleteOption);
+
+    // Position near button
+    const rect = btnEl.getBoundingClientRect();
+    menu.style.position = 'fixed';
+    menu.style.top = rect.bottom + 'px';
+    menu.style.left = rect.left + 'px';
+    document.body.appendChild(menu);
+
+    // Close on click outside
+    setTimeout(() => {
+        document.addEventListener('click', function close() {
+            menu.remove();
+            document.removeEventListener('click', close);
+        }, { once: true });
+    }, 0);
+}
+
+function showMoveDialog(mapItem) {
+    // Remove existing menu
+    document.querySelectorAll('.context-menu').forEach(m => m.remove());
+
+    const menu = document.createElement('div');
+    menu.className = 'context-menu move-menu';
+
+    const header = document.createElement('div');
+    header.className = 'move-menu-header';
+    header.textContent = 'Deplacer vers:';
+    menu.appendChild(header);
+
+    // Root option
+    const rootBtn = document.createElement('button');
+    rootBtn.textContent = 'Racine';
+    rootBtn.onclick = async () => {
+        menu.remove();
+        await fetch(`/api/maps/${mapItem.id}/move`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            credentials: 'include',
+            body: JSON.stringify({ folderId: null })
+        });
+        refreshMapList();
+    };
+    if (!mapItem.folderId) rootBtn.disabled = true;
+    menu.appendChild(rootBtn);
+
+    // Folder options
+    allFolders.forEach(folder => {
+        const btn = document.createElement('button');
+        btn.textContent = folder.name;
+        btn.onclick = async () => {
+            menu.remove();
+            await fetch(`/api/maps/${mapItem.id}/move`, {
+                method: 'PUT',
+                headers: getAuthHeaders(),
+                credentials: 'include',
+                body: JSON.stringify({ folderId: folder.id })
+            });
+            refreshMapList();
+        };
+        if (mapItem.folderId === folder.id) btn.disabled = true;
+        menu.appendChild(btn);
+    });
+
+    menu.style.position = 'fixed';
+    menu.style.top = '50%';
+    menu.style.left = '50%';
+    menu.style.transform = 'translate(-50%, -50%)';
+    document.body.appendChild(menu);
+
+    // Close on click outside
+    setTimeout(() => {
+        document.addEventListener('click', function close(e) {
+            if (!menu.contains(e.target)) {
+                menu.remove();
+                document.removeEventListener('click', close);
+            }
+        });
+    }, 0);
 }
 
 async function loadMapById(id, { silentError = false } = {}) {
@@ -940,10 +1198,16 @@ async function loadMapById(id, { silentError = false } = {}) {
     }
 }
 
-async function fetchMapSummaries() {
+async function fetchMapSummaries(folderId) {
     if (!ensureRemoteEnabled({ silent: true })) return [];
     try {
-        const resp = await fetch(`${MAPS_ENDPOINT}?id=0`, {
+        let url = `${MAPS_ENDPOINT}?id=0`;
+        if (folderId) {
+            url += `&folder_id=${encodeURIComponent(folderId)}`;
+        } else if (folderId === null) {
+            url += '&folder_id=root';
+        }
+        const resp = await fetch(url, {
             headers: getAuthHeaders(),
             credentials: 'include'
         });

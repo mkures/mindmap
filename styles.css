@@ -750,6 +750,51 @@ body.dragging-node {
     background: var(--text-tertiary);
 }
 
+/* ---- Help Modal ---- */
+.help-content {
+    max-width: 520px;
+}
+
+.help-sections {
+    display: grid;
+    gap: 18px;
+}
+
+.help-section h3 {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 8px 0;
+}
+
+.help-shortcuts {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 16px;
+    margin: 0;
+}
+
+.help-shortcuts dt {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    padding: 3px 8px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    white-space: nowrap;
+}
+
+.help-shortcuts dd {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0;
+    display: flex;
+    align-items: center;
+}
+
 /* ---- Login Page ---- */
 .auth-page {
     display: flex;

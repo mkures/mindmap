@@ -56,6 +56,9 @@ const fontFamilyInput = document.getElementById('fontFamilyInput');
 const fontSizeInput = document.getElementById('fontSizeInput');
 const autosaveDelayInput = document.getElementById('autosaveDelayInput');
 const configCancelBtn = document.getElementById('configCancelBtn');
+const helpBtn = document.getElementById('helpBtn');
+const helpModal = document.getElementById('helpModal');
+const helpCloseBtn = document.getElementById('helpCloseBtn');
 const newFolderBtn = document.getElementById('newFolderBtn');
 const breadcrumbEl = document.getElementById('breadcrumb');
 const currentUserDisplay = document.getElementById('currentUserDisplay');
@@ -168,6 +171,7 @@ function wireUI() {
         modalBackdrop.addEventListener('click', () => {
             closeConfig();
             closeMapList();
+            closeHelp();
         });
     }
 
@@ -342,6 +346,16 @@ function wireUI() {
 
     if (configCancelBtn) {
         configCancelBtn.addEventListener('click', closeConfig);
+    }
+
+    if (helpBtn) {
+        helpBtn.onclick = () => {
+            helpModal.classList.remove('hidden');
+            modalBackdrop.classList.remove('hidden');
+        };
+    }
+    if (helpCloseBtn) {
+        helpCloseBtn.addEventListener('click', closeHelp);
     }
 
     if (addLevelColorBtn) {
@@ -894,7 +908,14 @@ function openConfig() {
 
 function closeConfig() {
     configModal.classList.add('hidden');
-    if (mapListModal.classList.contains('hidden')) {
+    if (mapListModal.classList.contains('hidden') && helpModal.classList.contains('hidden')) {
+        modalBackdrop.classList.add('hidden');
+    }
+}
+
+function closeHelp() {
+    helpModal.classList.add('hidden');
+    if (configModal.classList.contains('hidden') && mapListModal.classList.contains('hidden')) {
         modalBackdrop.classList.add('hidden');
     }
 }
@@ -935,7 +956,7 @@ function openMapList() {
 
 function closeMapList() {
     mapListModal.classList.add('hidden');
-    if (configModal.classList.contains('hidden')) {
+    if (configModal.classList.contains('hidden') && helpModal.classList.contains('hidden')) {
         modalBackdrop.classList.add('hidden');
     }
 }

@@ -36,6 +36,7 @@
             <button id="exportMdBtn">MD</button>
             <span class="tb-sep"></span>
             <button id="configBtn">Config</button>
+            <button id="helpBtn">Aide</button>
             <button id="remoteSaveBtn" class="hidden">Sauvegarder</button>
             <input type="file" id="imageInput" accept="image/*" style="display:none">
             <input type="file" id="loadInput" accept="application/json" style="display:none">
@@ -85,6 +86,50 @@
                 <button id="closeMapListBtn" type="button" class="secondary">Fermer</button>
             </div>
             <div id="mapListContainer" class="map-list"></div>
+        </div>
+    </div>
+    <div id="helpModal" class="modal hidden">
+        <div class="modal-content help-content">
+            <h2>Aide</h2>
+            <div class="help-sections">
+                <div class="help-section">
+                    <h3>Navigation</h3>
+                    <dl class="help-shortcuts">
+                        <dt>Clic + glisser (fond)</dt><dd>Deplacer la vue</dd>
+                        <dt>Molette</dt><dd>Zoomer / Dezoomer</dd>
+                        <dt>Ctrl + F</dt><dd>Centrer et ajuster la carte</dd>
+                    </dl>
+                </div>
+                <div class="help-section">
+                    <h3>Noeuds</h3>
+                    <dl class="help-shortcuts">
+                        <dt>Tab</dt><dd>Ajouter un enfant</dd>
+                        <dt>Entree</dt><dd>Ajouter un voisin</dd>
+                        <dt>Suppr / Retour</dt><dd>Supprimer le noeud</dd>
+                        <dt>F2 ou taper</dt><dd>Editer le texte</dd>
+                        <dt>Clic + glisser (noeud)</dt><dd>Deplacer / reparenter</dd>
+                        <dt>Double-clic</dt><dd>Replier / deplier</dd>
+                    </dl>
+                </div>
+                <div class="help-section">
+                    <h3>Organisation</h3>
+                    <dl class="help-shortcuts">
+                        <dt>Ctrl + Fleches</dt><dd>Reordonner les voisins</dd>
+                        <dt>Ctrl + C / Ctrl + V</dt><dd>Copier / Coller un sous-arbre</dd>
+                    </dl>
+                </div>
+                <div class="help-section">
+                    <h3>Export</h3>
+                    <dl class="help-shortcuts">
+                        <dt>JSON</dt><dd>Sauvegarder en fichier local</dd>
+                        <dt>Ouvrir</dt><dd>Charger un fichier JSON</dd>
+                        <dt>PDF / PNG / MD</dt><dd>Exporter la carte</dd>
+                    </dl>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" id="helpCloseBtn">Fermer</button>
+            </div>
         </div>
     </div>
     <script type="module" src="src/main.js"></script>

@@ -10,9 +10,19 @@ export function exportMarkdown(map) {
 
     function walk(nodeId, depth) {
         const node = map.nodes[nodeId];
-        const indent = '  '.repeat(depth);
-        const prefix = depth === 0 ? '# ' : '- ';
-        lines.push(`${indent}${prefix}${node.text}`);
+        if (!node) return;
+
+        // Clean text: replace newlines with spaces
+        const text = (node.text || '').replace(/\n/g, ' ').trim() || '(vide)';
+
+        if (depth === 0) {
+            lines.push(`# ${text}`);
+        } else if (depth === 1) {
+            lines.push(`\n## ${text}`);
+        } else {
+            const indent = '  '.repeat(depth - 2);
+            lines.push(`${indent}- ${text}`);
+        }
 
         if (node.children && node.children.length > 0) {
             node.children.forEach(childId => walk(childId, depth + 1));

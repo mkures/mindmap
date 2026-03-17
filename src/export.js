@@ -37,6 +37,51 @@ export function exportMarkdown(map) {
 }
 
 /**
+ * Inject resolved CSS styles into a cloned SVG so it renders correctly as an image.
+ * When an SVG is serialized and loaded via <img>, external stylesheets are not applied.
+ */
+function injectExportStyles(svg) {
+    const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+    style.textContent = `
+        .link {
+            fill: none;
+            stroke: #b8b0a4;
+            stroke-width: 2px;
+            stroke-linecap: round;
+        }
+        .node rect {
+            fill: #ffffff;
+            stroke: #d6d0c6;
+            stroke-width: 1.5px;
+            rx: 10;
+            ry: 10;
+        }
+        .node text {
+            font-family: 'DM Sans', sans-serif;
+            font-size: 13px;
+            font-weight: 500;
+            fill: #2d2a26;
+        }
+        .collapse-indicator circle {
+            fill: #7a756c;
+        }
+        .collapse-indicator text {
+            font-family: 'DM Sans', sans-serif;
+            font-size: 11px;
+            font-weight: 600;
+            fill: #ffffff;
+        }
+    `;
+    svg.insertBefore(style, svg.firstChild);
+
+    // Also set rx/ry as SVG attributes since CSS rx may not work in all image renderers
+    svg.querySelectorAll('.node rect').forEach(rect => {
+        if (!rect.hasAttribute('rx')) rect.setAttribute('rx', '10');
+        if (!rect.hasAttribute('ry')) rect.setAttribute('ry', '10');
+    });
+}
+
+/**
  * Export map as PNG image
  */
 export function exportImage(svgElement, map, pan) {
@@ -73,6 +118,11 @@ export function exportImage(svgElement, map, pan) {
     bg.setAttribute('fill', 'white');
     svg.insertBefore(bg, svg.firstChild);
 
+    // Inject CSS styles (external stylesheet not available when SVG is serialized as image)
+    injectExportStyles(svg);
+    // Remove selection highlight
+    svg.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'));
+
     // Convert SVG to canvas
     const svgData = new XMLSerializer().serializeToString(svg);
     const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
@@ -81,7 +131,7 @@ export function exportImage(svgElement, map, pan) {
     const img = new Image();
     img.onload = () => {
         const canvas = document.createElement('canvas');
-        const scale = 2; // Higher resolution
+        const scale = 3; // Higher resolution
         canvas.width = width * scale;
         canvas.height = height * scale;
 
@@ -137,6 +187,11 @@ export function exportPdf(svgElement, map, pan) {
     bg.setAttribute('height', '100%');
     bg.setAttribute('fill', 'white');
     svg.insertBefore(bg, svg.firstChild);
+
+    // Inject CSS styles (external stylesheet not available when SVG is serialized as image)
+    injectExportStyles(svg);
+    // Remove selection highlight
+    svg.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'));
 
     // Convert SVG to canvas then to PDF
     const svgData = new XMLSerializer().serializeToString(svg);

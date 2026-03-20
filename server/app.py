@@ -159,6 +159,37 @@ def requires_login(f):
     return decorated
 
 
+def _try_basic_auth():
+    """Try HTTP Basic Auth, return user dict or None."""
+    auth = request.authorization
+    if not auth or not auth.username or not auth.password:
+        return None
+    conn = get_db()
+    cursor = conn.execute(
+        'SELECT id, username, display_name, password_hash, is_admin FROM users WHERE username = ?',
+        (auth.username,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if not row or not check_password_hash(row['password_hash'], auth.password):
+        return None
+    return dict(row)
+
+
+def requires_api_auth(f):
+    """Decorator accepting session-based login OR HTTP Basic Auth."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        user = get_current_user()
+        if not user:
+            user = _try_basic_auth()
+        if not user:
+            return jsonify({'error': 'Non authentifié'}), 401
+        request.current_user = user
+        return f(*args, **kwargs)
+    return decorated
+
+
 def requires_admin(f):
     """Decorator requiring admin privileges."""
     @wraps(f)
@@ -768,6 +799,324 @@ def get_shared_map(token):
 def shared_view(token):
     """Serve shared map viewer page."""
     return send_from_directory(app.static_folder, 'shared.html')
+
+
+# =============================================================================
+# INJECT / OUTLINE API (for AI and external tools)
+# =============================================================================
+
+def _generate_node_id(map_data):
+    """Generate a unique node ID that doesn't collide with existing nodes."""
+    counter = len(map_data.get('nodes', {})) + 1
+    node_id = f'n{counter}'
+    while node_id in map_data.get('nodes', {}):
+        counter += 1
+        node_id = f'n{counter}'
+    return node_id
+
+
+def _delete_node_recursive(map_data, node_id):
+    """Delete a node and all its descendants from map_data."""
+    node = map_data['nodes'].get(node_id)
+    if not node:
+        return
+    # Remove from parent's children
+    parent = map_data['nodes'].get(node.get('parentId'))
+    if parent and 'children' in parent:
+        parent['children'] = [c for c in parent['children'] if c != node_id]
+    # Recursively delete children
+    for child_id in list(node.get('children', [])):
+        _delete_node_recursive(map_data, child_id)
+    del map_data['nodes'][node_id]
+
+
+def _load_map_data(raw_data):
+    """Load map data from DB, handling both dict and double-encoded string formats."""
+    data = json.loads(raw_data)
+    if isinstance(data, str):
+        data = json.loads(data)
+    return data
+
+
+def _save_map_data(map_data, original_raw):
+    """Serialize map data for DB storage, preserving original encoding format."""
+    # Detect if original was double-encoded (string inside JSON)
+    decoded_once = json.loads(original_raw)
+    if isinstance(decoded_once, str):
+        # Was double-encoded: re-encode the same way
+        return json.dumps(json.dumps(map_data))
+    return json.dumps(map_data)
+
+
+@app.route('/api/maps/<map_id>/inject', methods=['POST'])
+@requires_api_auth
+def inject_operations(map_id):
+    """Batch operations on a map (for AI injection)."""
+    user = request.current_user
+    conn = get_db()
+    row = conn.execute('SELECT data, user_id FROM maps WHERE id = ?', (map_id,)).fetchone()
+
+    if not row:
+        conn.close()
+        return jsonify({'error': 'Map not found'}), 404
+
+    if row['user_id'] != user['id'] and not user.get('is_admin'):
+        conn.close()
+        return jsonify({'error': 'Accès refusé'}), 403
+
+    raw_data = row['data']
+    map_data = _load_map_data(raw_data)
+    operations = request.get_json().get('operations', [])
+
+    applied = 0
+    skipped = 0
+    errors = []
+    node_ids = {}
+
+    for i, op_data in enumerate(operations):
+        try:
+            op = op_data.get('op')
+
+            if op == 'add_child':
+                parent_id = op_data['parent']
+                if parent_id not in map_data.get('nodes', {}):
+                    raise ValueError(f"Parent '{parent_id}' not found")
+                node_id = op_data.get('id') or _generate_node_id(map_data)
+                if node_id in map_data['nodes']:
+                    skipped += 1
+                    continue
+                map_data['nodes'][node_id] = {
+                    'id': node_id,
+                    'parentId': parent_id,
+                    'text': op_data.get('text', 'Node'),
+                    'children': [],
+                    'color': op_data.get('color'),
+                    'tags': op_data.get('tags', [])
+                }
+                map_data['nodes'][parent_id]['children'].append(node_id)
+                node_ids[node_id] = node_id
+
+            elif op == 'add_sibling':
+                ref_id = op_data['sibling_of']
+                ref_node = map_data['nodes'].get(ref_id)
+                if not ref_node or not ref_node.get('parentId'):
+                    raise ValueError(f"Node '{ref_id}' not found or is root")
+                parent_id = ref_node['parentId']
+                node_id = op_data.get('id') or _generate_node_id(map_data)
+                if node_id in map_data['nodes']:
+                    skipped += 1
+                    continue
+                map_data['nodes'][node_id] = {
+                    'id': node_id,
+                    'parentId': parent_id,
+                    'text': op_data.get('text', 'Node'),
+                    'children': [],
+                    'color': op_data.get('color'),
+                    'tags': op_data.get('tags', [])
+                }
+                siblings = map_data['nodes'][parent_id]['children']
+                idx = siblings.index(ref_id) + 1 if ref_id in siblings else len(siblings)
+                siblings.insert(idx, node_id)
+                node_ids[node_id] = node_id
+
+            elif op == 'add_free_bubble':
+                node_id = op_data.get('id') or _generate_node_id(map_data)
+                if node_id in map_data.get('nodes', {}):
+                    skipped += 1
+                    continue
+                map_data['nodes'][node_id] = {
+                    'id': node_id,
+                    'parentId': None,
+                    'text': op_data.get('text', 'Note'),
+                    'children': [],
+                    'nodeType': 'bubble',
+                    'placement': 'free',
+                    'fx': op_data.get('fx', 0),
+                    'fy': op_data.get('fy', 0),
+                    'color': op_data.get('color', '#fef3c7'),
+                    'tags': op_data.get('tags', [])
+                }
+                node_ids[node_id] = node_id
+
+            elif op == 'add_card':
+                node_id = op_data.get('id') or _generate_node_id(map_data)
+                if node_id in map_data.get('nodes', {}):
+                    skipped += 1
+                    continue
+                map_data['nodes'][node_id] = {
+                    'id': node_id,
+                    'parentId': None,
+                    'text': op_data.get('text', 'Sans titre'),
+                    'children': [],
+                    'nodeType': 'card',
+                    'placement': 'free',
+                    'fx': op_data.get('fx', 0),
+                    'fy': op_data.get('fy', 0),
+                    'color': op_data.get('color', '#ffffff'),
+                    'body': op_data.get('body', ''),
+                    'cardWidth': op_data.get('cardWidth', 280),
+                    'cardExpanded': bool(op_data.get('cardExpanded', False)),
+                    'tags': op_data.get('tags', [])
+                }
+                node_ids[node_id] = node_id
+
+            elif op == 'add_link':
+                if 'links' not in map_data:
+                    map_data['links'] = []
+                from_id = op_data['from']
+                to_id = op_data['to']
+                if any(l['from'] == from_id and l['to'] == to_id for l in map_data['links']):
+                    skipped += 1
+                    continue
+                link_id = f'l{int(time.time() * 1000)}{i}'
+                map_data['links'].append({
+                    'id': link_id,
+                    'from': from_id,
+                    'to': to_id,
+                    'label': op_data.get('label', ''),
+                    'color': op_data.get('color', '#94a3b8'),
+                    'style': op_data.get('style', 'dashed')
+                })
+
+            elif op == 'add_frame':
+                if 'frames' not in map_data:
+                    map_data['frames'] = []
+                frame_id = op_data.get('id') or f'f{int(time.time() * 1000)}'
+                if any(f['id'] == frame_id for f in map_data['frames']):
+                    skipped += 1
+                    continue
+                map_data['frames'].append({
+                    'id': frame_id,
+                    'title': op_data.get('title', 'Zone'),
+                    'color': op_data.get('color', '#dbeafe'),
+                    'x': op_data.get('x', 0),
+                    'y': op_data.get('y', 0),
+                    'w': op_data.get('w', 400),
+                    'h': op_data.get('h', 300)
+                })
+
+            elif op == 'add_tag':
+                map_data.setdefault('settings', {}).setdefault('tags', [])
+                tag_id = op_data['id']
+                if any(t['id'] == tag_id for t in map_data['settings']['tags']):
+                    skipped += 1
+                    continue
+                map_data['settings']['tags'].append({
+                    'id': tag_id,
+                    'name': op_data.get('label', ''),
+                    'color': op_data.get('color', '#94a3b8')
+                })
+
+            elif op == 'update_node':
+                node_id = op_data['id']
+                node = map_data['nodes'].get(node_id)
+                if not node:
+                    raise ValueError(f"Node '{node_id}' not found")
+                for key in ('text', 'body', 'tags', 'color'):
+                    if key in op_data:
+                        node[key] = op_data[key]
+
+            elif op == 'delete_node':
+                node_id = op_data['id']
+                if node_id not in map_data.get('nodes', {}) or node_id == map_data.get('rootId'):
+                    skipped += 1
+                    continue
+                _delete_node_recursive(map_data, node_id)
+                if 'links' in map_data:
+                    map_data['links'] = [l for l in map_data['links']
+                                         if l['from'] != node_id and l['to'] != node_id]
+
+            else:
+                raise ValueError(f"Unknown operation '{op}'")
+
+            applied += 1
+
+        except Exception as e:
+            skipped += 1
+            errors.append({'index': i, 'op': op_data.get('op'), 'error': str(e)})
+
+    # Save
+    map_data['updatedAt'] = int(time.time() * 1000)
+    serialized = _save_map_data(map_data, raw_data)
+    conn.execute('UPDATE maps SET data = ?, updated_at = ? WHERE id = ?',
+                 (serialized, map_data['updatedAt'], map_id))
+    conn.commit()
+    conn.close()
+
+    result = {
+        'ok': True,
+        'map_id': map_id,
+        'operations_applied': applied,
+        'operations_skipped': skipped,
+        'node_ids': node_ids
+    }
+    if errors:
+        result['errors'] = errors
+    return jsonify(result)
+
+
+@app.route('/api/maps/<map_id>/outline', methods=['GET'])
+@requires_api_auth
+def map_outline(map_id):
+    """Return a simplified outline view of a map (for AI context)."""
+    user = request.current_user
+    conn = get_db()
+    row = conn.execute('SELECT data, title, user_id FROM maps WHERE id = ?', (map_id,)).fetchone()
+
+    if not row:
+        conn.close()
+        return jsonify({'error': 'Map not found'}), 404
+
+    if row['user_id'] != user['id'] and not user.get('is_admin'):
+        conn.close()
+        return jsonify({'error': 'Accès refusé'}), 403
+
+    conn.close()
+    map_data = _load_map_data(row['data'])
+    nodes = map_data.get('nodes', {})
+
+    # Build indented tree outline
+    def build_tree(node_id, indent=0):
+        node = nodes.get(node_id)
+        if not node:
+            return ''
+        prefix = '  ' * indent + '- '
+        line = f"{prefix}[{node_id}] {node.get('text', '')}\n"
+        for child_id in node.get('children', []):
+            line += build_tree(child_id, indent + 1)
+        return line
+
+    root_id = map_data.get('rootId', '')
+    tree_text = build_tree(root_id).strip()
+
+    # Collect free bubbles and cards
+    free_bubbles = []
+    cards = []
+    for nid, node in nodes.items():
+        if node.get('placement') != 'free':
+            continue
+        entry = {
+            'id': nid,
+            'text': node.get('text', ''),
+            'fx': node.get('fx'),
+            'fy': node.get('fy'),
+            'tags': node.get('tags', [])
+        }
+        if node.get('nodeType') == 'card':
+            entry['body'] = node.get('body', '')
+            cards.append(entry)
+        else:
+            free_bubbles.append(entry)
+
+    return jsonify({
+        'map_id': map_id,
+        'title': row['title'],
+        'tree': tree_text,
+        'free_bubbles': free_bubbles,
+        'cards': cards,
+        'frames': map_data.get('frames', []),
+        'tags': map_data.get('settings', {}).get('tags', [])
+    })
 
 
 # =============================================================================

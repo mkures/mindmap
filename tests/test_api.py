@@ -215,6 +215,323 @@ class TestNewFieldsRoundtrip:
         assert 'frames' not in loaded
 
 
+class TestInjectAPI:
+    def _create_map(self, authed_client):
+        resp = authed_client.post(
+            '/api/maps',
+            data=json.dumps({'title': 'Inject test', 'map': make_map_json()}),
+            content_type='application/json'
+        )
+        return resp.get_json()['id']
+
+    def test_inject_add_child(self, authed_client):
+        map_id = self._create_map(authed_client)
+        resp = authed_client.post(
+            f'/api/maps/{map_id}/inject',
+            data=json.dumps({'operations': [
+                {'op': 'add_child', 'parent': 'n1', 'id': 'ai_1', 'text': 'Test'}
+            ]}),
+            content_type='application/json'
+        )
+        data = resp.get_json()
+        assert data['ok'] is True
+        assert data['operations_applied'] == 1
+
+        load = authed_client.get(f'/api/maps?id={map_id}')
+        loaded = json.loads(load.get_json()['map'])
+        assert 'ai_1' in loaded['nodes']
+        assert loaded['nodes']['ai_1']['parentId'] == 'n1'
+        assert 'ai_1' in loaded['nodes']['n1']['children']
+
+    def test_inject_cascade_references(self, authed_client):
+        """Operations can reference nodes created in the same batch."""
+        map_id = self._create_map(authed_client)
+        resp = authed_client.post(
+            f'/api/maps/{map_id}/inject',
+            data=json.dumps({'operations': [
+                {'op': 'add_child', 'parent': 'n1', 'id': 'ai_1', 'text': 'Parent'},
+                {'op': 'add_child', 'parent': 'ai_1', 'id': 'ai_2', 'text': 'Enfant'},
+            ]}),
+            content_type='application/json'
+        )
+        data = resp.get_json()
+        assert data['operations_applied'] == 2
+
+        load = authed_client.get(f'/api/maps?id={map_id}')
+        loaded = json.loads(load.get_json()['map'])
+        assert loaded['nodes']['ai_2']['parentId'] == 'ai_1'
+
+    def test_inject_idempotent(self, authed_client):
+        """Replaying the same batch doesn't duplicate nodes."""
+        map_id = self._create_map(authed_client)
+        ops = json.dumps({'operations': [
+            {'op': 'add_child', 'parent': 'n1', 'id': 'ai_1', 'text': 'Once'}
+        ]})
+        authed_client.post(f'/api/maps/{map_id}/inject',
+                          data=ops, content_type='application/json')
+        resp = authed_client.post(f'/api/maps/{map_id}/inject',
+                                 data=ops, content_type='application/json')
+        data = resp.get_json()
+        assert data['operations_skipped'] == 1
+        assert data['operations_applied'] == 0
+
+    def test_inject_add_sibling(self, authed_client):
+        map_id = self._create_map(authed_client)
+        # First add a child, then add a sibling
+        authed_client.post(
+            f'/api/maps/{map_id}/inject',
+            data=json.dumps({'operations': [
+                {'op': 'add_child', 'parent': 'n1', 'id': 'ai_1', 'text': 'First'}
+            ]}),
+            content_type='application/json'
+        )
+        resp = authed_client.post(
+            f'/api/maps/{map_id}/inject',
+            data=json.dumps({'operations': [
+                {'op': 'add_sibling', 'sibling_of': 'ai_1', 'id': 'ai_2', 'text': 'Second'}
+            ]}),
+            content_type='application/json'
+        )
+        data = resp.get_json()
+        assert data['operations_applied'] == 1
+
+        load = authed_client.get(f'/api/maps?id={map_id}')
+        loaded = json.loads(load.get_json()['map'])
+        assert loaded['nodes']['ai_2']['parentId'] == 'n1'
+        # Should be inserted after ai_1
+        children = loaded['nodes']['n1']['children']
+        assert children.index('ai_2') == children.index('ai_1') + 1
+
+    def test_inject_add_card(self, authed_client):
+        map_id = self._create_map(authed_client)
+        resp = authed_client.post(
+            f'/api/maps/{map_id}/inject',
+            data=json.dumps({'operations': [
+                {'op': 'add_card', 'id': 'card_1', 'text': 'Notes',
+                 'fx': 500, 'fy': 100, 'body': '## Test\n- item'}
+            ]}),
+            content_type='application/json'
+        )
+        assert resp.get_json()['operations_applied'] == 1
+
+        load = authed_client.get(f'/api/maps?id={map_id}')
+        loaded = json.loads(load.get_json()['map'])
+        assert loaded['nodes']['card_1']['nodeType'] == 'card'
+        assert loaded['nodes']['card_1']['body'] == '## Test\n- item'
+        assert loaded['nodes']['card_1']['placement'] == 'free'
+
+    def test_inject_add_free_bubble(self, authed_client):
+        map_id = self._create_map(authed_client)
+        resp = authed_client.post(
+            f'/api/maps/{map_id}/inject',
+            data=json.dumps({'operations': [
+                {'op': 'add_free_bubble', 'id': 'fb_1', 'text': 'Idée',
+                 'fx': 300, 'fy': -100}
+            ]}),
+            content_type='application/json'
+        )
+        assert resp.get_json()['operations_applied'] == 1
+
+        load = authed_client.get(f'/api/maps?id={map_id}')
+        loaded = json.loads(load.get_json()['map'])
+        assert loaded['nodes']['fb_1']['nodeType'] == 'bubble'
+        assert loaded['nodes']['fb_1']['fx'] == 300
+
+    def test_inject_add_link(self, authed_client):
+        map_id = self._create_map(authed_client)
+        resp = authed_client.post(
+            f'/api/maps/{map_id}/inject',
+            data=json.dumps({'operations': [
+                {'op': 'add_child', 'parent': 'n1', 'id': 'ai_a', 'text': 'A'},
+                {'op': 'add_child', 'parent': 'n1', 'id': 'ai_b', 'text': 'B'},
+                {'op': 'add_link', 'from': 'ai_a', 'to': 'ai_b', 'label': 'lié'},
+            ]}),
+            content_type='application/json'
+        )
+        assert resp.get_json()['operations_applied'] == 3
+
+        load = authed_client.get(f'/api/maps?id={map_id}')
+        loaded = json.loads(load.get_json()['map'])
+        assert any(l['label'] == 'lié' for l in loaded.get('links', []))
+
+    def test_inject_add_frame(self, authed_client):
+        map_id = self._create_map(authed_client)
+        resp = authed_client.post(
+            f'/api/maps/{map_id}/inject',
+            data=json.dumps({'operations': [
+                {'op': 'add_frame', 'id': 'f_test', 'title': 'Zone IA',
+                 'x': 0, 'y': 0, 'w': 500, 'h': 400}
+            ]}),
+            content_type='application/json'
+        )
+        assert resp.get_json()['operations_applied'] == 1
+
+        load = authed_client.get(f'/api/maps?id={map_id}')
+        loaded = json.loads(load.get_json()['map'])
+        assert any(f['id'] == 'f_test' for f in loaded.get('frames', []))
+
+    def test_inject_add_tag(self, authed_client):
+        map_id = self._create_map(authed_client)
+        resp = authed_client.post(
+            f'/api/maps/{map_id}/inject',
+            data=json.dumps({'operations': [
+                {'op': 'add_tag', 'id': 'tg1', 'label': 'IA-généré', 'color': '#8b5cf6'}
+            ]}),
+            content_type='application/json'
+        )
+        assert resp.get_json()['operations_applied'] == 1
+
+        load = authed_client.get(f'/api/maps?id={map_id}')
+        loaded = json.loads(load.get_json()['map'])
+        assert any(t['id'] == 'tg1' for t in loaded.get('settings', {}).get('tags', []))
+
+    def test_inject_update_node(self, authed_client):
+        map_id = self._create_map(authed_client)
+        resp = authed_client.post(
+            f'/api/maps/{map_id}/inject',
+            data=json.dumps({'operations': [
+                {'op': 'update_node', 'id': 'n1', 'text': 'Updated Root'}
+            ]}),
+            content_type='application/json'
+        )
+        assert resp.get_json()['operations_applied'] == 1
+
+        load = authed_client.get(f'/api/maps?id={map_id}')
+        loaded = json.loads(load.get_json()['map'])
+        assert loaded['nodes']['n1']['text'] == 'Updated Root'
+
+    def test_inject_delete_node(self, authed_client):
+        map_id = self._create_map(authed_client)
+        # Add then delete
+        authed_client.post(
+            f'/api/maps/{map_id}/inject',
+            data=json.dumps({'operations': [
+                {'op': 'add_child', 'parent': 'n1', 'id': 'ai_del', 'text': 'To delete'}
+            ]}),
+            content_type='application/json'
+        )
+        resp = authed_client.post(
+            f'/api/maps/{map_id}/inject',
+            data=json.dumps({'operations': [
+                {'op': 'delete_node', 'id': 'ai_del'}
+            ]}),
+            content_type='application/json'
+        )
+        assert resp.get_json()['operations_applied'] == 1
+
+        load = authed_client.get(f'/api/maps?id={map_id}')
+        loaded = json.loads(load.get_json()['map'])
+        assert 'ai_del' not in loaded['nodes']
+        assert 'ai_del' not in loaded['nodes']['n1']['children']
+
+    def test_inject_error_bad_parent(self, authed_client):
+        map_id = self._create_map(authed_client)
+        resp = authed_client.post(
+            f'/api/maps/{map_id}/inject',
+            data=json.dumps({'operations': [
+                {'op': 'add_child', 'parent': 'doesnt_exist', 'text': 'Fail'}
+            ]}),
+            content_type='application/json'
+        )
+        data = resp.get_json()
+        assert data['operations_skipped'] == 1
+        assert len(data['errors']) == 1
+        assert 'doesnt_exist' in data['errors'][0]['error']
+
+    def test_inject_mixed_operations(self, authed_client):
+        """Full test with all operation types in one batch."""
+        map_id = self._create_map(authed_client)
+        resp = authed_client.post(
+            f'/api/maps/{map_id}/inject',
+            data=json.dumps({'operations': [
+                {'op': 'add_tag', 'id': 'tg1', 'label': 'IA', 'color': '#8b5cf6'},
+                {'op': 'add_child', 'parent': 'n1', 'id': 'x1', 'text': 'Branche', 'tags': ['tg1']},
+                {'op': 'add_child', 'parent': 'x1', 'id': 'x2', 'text': 'Sous-branche'},
+                {'op': 'add_card', 'id': 'x3', 'text': 'Card', 'fx': 500, 'fy': 0, 'body': '# Note'},
+                {'op': 'add_free_bubble', 'id': 'x4', 'text': 'Libre', 'fx': 300, 'fy': 200},
+                {'op': 'add_link', 'from': 'x3', 'to': 'x1', 'label': 'annoté'},
+                {'op': 'add_frame', 'id': 'xf', 'title': 'Zone', 'x': 250, 'y': -50, 'w': 500, 'h': 400},
+            ]}),
+            content_type='application/json'
+        )
+        data = resp.get_json()
+        assert data['operations_applied'] == 7
+        assert data['operations_skipped'] == 0
+
+    def test_inject_map_not_found(self, authed_client):
+        resp = authed_client.post(
+            '/api/maps/nonexistent/inject',
+            data=json.dumps({'operations': []}),
+            content_type='application/json'
+        )
+        assert resp.status_code == 404
+
+    def test_inject_unauthenticated(self, client):
+        resp = client.post(
+            '/api/maps/whatever/inject',
+            data=json.dumps({'operations': []}),
+            content_type='application/json'
+        )
+        assert resp.status_code == 401
+
+
+class TestOutlineAPI:
+    def _create_map_with_children(self, authed_client):
+        map_id_resp = authed_client.post(
+            '/api/maps',
+            data=json.dumps({'title': 'Outline Test', 'map': make_map_json()}),
+            content_type='application/json'
+        )
+        map_id = map_id_resp.get_json()['id']
+        authed_client.post(
+            f'/api/maps/{map_id}/inject',
+            data=json.dumps({'operations': [
+                {'op': 'add_child', 'parent': 'n1', 'id': 'o1', 'text': 'Branch A'},
+                {'op': 'add_child', 'parent': 'o1', 'id': 'o2', 'text': 'Leaf 1'},
+                {'op': 'add_free_bubble', 'id': 'fb1', 'text': 'Free note', 'fx': 400, 'fy': 200},
+                {'op': 'add_card', 'id': 'cd1', 'text': 'Card title', 'fx': 600, 'fy': 100, 'body': '## Content'},
+                {'op': 'add_frame', 'id': 'fr1', 'title': 'Work zone', 'x': 0, 'y': 0, 'w': 500, 'h': 400},
+            ]}),
+            content_type='application/json'
+        )
+        return map_id
+
+    def test_outline_tree(self, authed_client):
+        map_id = self._create_map_with_children(authed_client)
+        resp = authed_client.get(f'/api/maps/{map_id}/outline')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert '[n1]' in data['tree']
+        assert '[o1]' in data['tree']
+        assert '[o2]' in data['tree']
+        assert 'Branch A' in data['tree']
+
+    def test_outline_free_bubbles(self, authed_client):
+        map_id = self._create_map_with_children(authed_client)
+        data = authed_client.get(f'/api/maps/{map_id}/outline').get_json()
+        assert any(b['id'] == 'fb1' for b in data['free_bubbles'])
+
+    def test_outline_cards(self, authed_client):
+        map_id = self._create_map_with_children(authed_client)
+        data = authed_client.get(f'/api/maps/{map_id}/outline').get_json()
+        card = next(c for c in data['cards'] if c['id'] == 'cd1')
+        assert card['text'] == 'Card title'
+        assert card['body'] == '## Content'
+
+    def test_outline_frames(self, authed_client):
+        map_id = self._create_map_with_children(authed_client)
+        data = authed_client.get(f'/api/maps/{map_id}/outline').get_json()
+        assert any(f['id'] == 'fr1' for f in data['frames'])
+
+    def test_outline_not_found(self, authed_client):
+        resp = authed_client.get('/api/maps/nonexistent/outline')
+        assert resp.status_code == 404
+
+    def test_outline_unauthenticated(self, client):
+        resp = client.get('/api/maps/whatever/outline')
+        assert resp.status_code == 401
+
+
 class TestSharing:
     def _create_map(self, authed_client):
         resp = authed_client.post(

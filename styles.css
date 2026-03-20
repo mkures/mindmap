@@ -1444,7 +1444,8 @@ body.dragging-node {
 }
 
 .frame-title {
-    pointer-events: none;
+    pointer-events: all;
+    cursor: move;
     user-select: none;
     font-family: inherit;
 }

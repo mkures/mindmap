@@ -1437,31 +1437,35 @@ function openNoteModal(nodeId) {
     }
     container.innerHTML = '';
 
-    if (window.toastui && window.toastui.Editor) {
-        _noteEditor = new window.toastui.Editor({
-            el: container,
-            height: '380px',
-            initialEditType: 'markdown',
-            previewStyle: 'tab',
-            initialValue: node.body || '',
-            toolbarItems: [
-                ['heading', 'bold', 'italic', 'strike'],
-                ['hr', 'quote'],
-                ['ul', 'ol', 'task'],
-                ['table', 'link'],
-                ['code', 'codeblock'],
-            ],
-        });
-    } else {
-        // Fallback: plain textarea
-        container.innerHTML = '';
-        const ta = document.createElement('textarea');
-        ta.id = 'noteModalBody';
-        ta.value = node.body || '';
-        ta.placeholder = 'Écrivez votre note en Markdown…';
-        ta.style.cssText = 'width:100%;min-height:380px;resize:vertical;font-family:monospace;font-size:13px;line-height:1.6;border:1px solid var(--border);border-radius:var(--radius);padding:12px;box-sizing:border-box;';
-        container.appendChild(ta);
-    }
+    // Defer editor init until after the browser has painted the modal (container has real dimensions)
+    const initialValue = node.body || '';
+    requestAnimationFrame(() => {
+        if (modal.classList.contains('hidden')) return; // modal closed before paint
+        if (window.toastui && window.toastui.Editor) {
+            _noteEditor = new window.toastui.Editor({
+                el: container,
+                height: '380px',
+                initialEditType: 'markdown',
+                previewStyle: 'tab',
+                initialValue,
+                toolbarItems: [
+                    ['heading', 'bold', 'italic', 'strike'],
+                    ['hr', 'quote'],
+                    ['ul', 'ol', 'task'],
+                    ['table', 'link'],
+                    ['code', 'codeblock'],
+                ],
+            });
+        } else {
+            // Fallback: plain textarea
+            const ta = document.createElement('textarea');
+            ta.id = 'noteModalBody';
+            ta.value = initialValue;
+            ta.placeholder = 'Écrivez votre note en Markdown…';
+            ta.style.cssText = 'width:100%;min-height:380px;resize:vertical;font-family:monospace;font-size:13px;line-height:1.6;border:1px solid var(--border);border-radius:var(--radius);padding:12px;box-sizing:border-box;';
+            container.appendChild(ta);
+        }
+    });
 }
 
 function closeNoteModal() {

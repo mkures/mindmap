@@ -115,29 +115,15 @@ export function render(map, svg, selectedId) {
         const node = map.nodes[id];
         if (!isFinite(node.x) || !isFinite(node.y)) continue;
 
-        const isCard = node.nodeType === 'card';
         let g = nodeElements.get(id);
-
-        // If node type changed (bubble ↔ card), recreate the element
-        const existingIsCard = g?.classList.contains('card-node');
-        if (g && isCard !== existingIsCard) {
-            g.remove();
-            nodeElements.delete(id);
-            g = null;
-        }
 
         if (!g) {
             g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
             g.classList.add('node');
             g.setAttribute('data-id', id);
 
-            if (isCard) {
-                g.classList.add('card-node');
-                buildCardElement(g, id);
-            } else {
-                if (node.placement === 'free') g.classList.add('free-node');
-                buildBubbleElement(g);
-            }
+            if (node.placement === 'free') g.classList.add('free-node');
+            buildBubbleElement(g);
 
             nodeGroup.appendChild(g);
             nodeElements.set(id, g);
@@ -149,11 +135,7 @@ export function render(map, svg, selectedId) {
         // Update selection state
         g.classList.toggle('selected', id === selectedId);
 
-        if (isCard) {
-            updateCardElement(g, node, settings);
-        } else {
-            updateBubbleElement(g, node, settings, id === selectedId);
-        }
+        updateBubbleElement(g, node, settings, id === selectedId);
     }
 
     // Remove old nodes
@@ -178,7 +160,7 @@ function buildBubbleElement(g) {
 }
 
 function updateBubbleElement(g, node, settings, isSelected) {
-    const rect = g.querySelector('rect:not(.card-bg)');
+    const rect = g.querySelector('rect');
     rect.setAttribute('width', node.w);
     rect.setAttribute('height', node.h);
     if (node.color) rect.style.fill = node.color;
@@ -244,6 +226,26 @@ function updateBubbleElement(g, node, settings, isSelected) {
         });
     }
 
+    // Note indicator
+    let noteIcon = g.querySelector('.note-icon');
+    if (node.body) {
+        if (!noteIcon) {
+            noteIcon = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            noteIcon.classList.add('note-icon');
+            noteIcon.setAttribute('font-size', '10');
+            noteIcon.setAttribute('text-anchor', 'end');
+            noteIcon.setAttribute('dominant-baseline', 'hanging');
+            noteIcon.setAttribute('pointer-events', 'none');
+            noteIcon.textContent = '✎';
+            g.appendChild(noteIcon);
+        }
+        noteIcon.setAttribute('x', node.w - 4);
+        noteIcon.setAttribute('y', 3);
+        noteIcon.setAttribute('fill', '#6366f1');
+    } else if (noteIcon) {
+        noteIcon.remove();
+    }
+
     // Collapse indicator
     let collapseIndicator = g.querySelector('.collapse-indicator');
     const hasChildren = node.children && node.children.length > 0;
@@ -276,174 +278,6 @@ function updateBubbleElement(g, node, settings, isSelected) {
     } else if (collapseIndicator) {
         collapseIndicator.remove();
     }
-}
-
-// ── Card rendering ──────────────────────────────────────────────────────────
-
-function buildCardElement(g, nodeId) {
-    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    rect.classList.add('card-bg');
-    rect.setAttribute('rx', 8);
-    rect.setAttribute('ry', 8);
-    g.appendChild(rect);
-
-    const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
-    fo.classList.add('card-fo');
-
-    const cardContent = document.createElement('div');
-    cardContent.className = 'card-content';
-
-    const header = document.createElement('div');
-    header.className = 'card-header';
-
-    const title = document.createElement('span');
-    title.className = 'card-title';
-
-    const toggle = document.createElement('button');
-    toggle.className = 'card-toggle';
-    toggle.textContent = '▼';
-    toggle.type = 'button';
-
-    header.appendChild(title);
-    header.appendChild(toggle);
-
-    const body = document.createElement('div');
-    body.className = 'card-body collapsed';
-
-    cardContent.appendChild(header);
-    cardContent.appendChild(body);
-    fo.appendChild(cardContent);
-    g.appendChild(fo);
-
-    // Dispatch custom events (caught by main.js)
-    toggle.addEventListener('click', e => {
-        e.stopPropagation();
-        document.dispatchEvent(new CustomEvent('mindmap:card-toggle', {
-            detail: { nodeId: g.dataset.id }
-        }));
-    });
-
-    title.addEventListener('click', e => {
-        e.stopPropagation();
-        document.dispatchEvent(new CustomEvent('mindmap:card-title-click', {
-            detail: { nodeId: g.dataset.id, titleEl: title }
-        }));
-    });
-
-    body.addEventListener('dblclick', e => {
-        e.stopPropagation();
-        document.dispatchEvent(new CustomEvent('mindmap:card-body-dblclick', {
-            detail: { nodeId: g.dataset.id }
-        }));
-    });
-
-    // Card selection: clicking anywhere on the card triggers selection
-    cardContent.addEventListener('click', e => {
-        document.dispatchEvent(new CustomEvent('mindmap:card-select', {
-            detail: { nodeId: g.dataset.id }
-        }));
-    });
-
-    // Card drag via header (primary drag handle)
-    header.addEventListener('pointerdown', e => {
-        if (e.button !== 0) return;
-        e.stopPropagation();
-        document.dispatchEvent(new CustomEvent('mindmap:card-drag-start', {
-            detail: { nodeId: g.dataset.id, clientX: e.clientX, clientY: e.clientY, shiftKey: e.shiftKey }
-        }));
-    });
-
-    // Prevent mousedown on body from bubbling to SVG drag handler (allow text selection)
-    body.addEventListener('mousedown', e => {
-        e.stopPropagation();
-    });
-}
-
-function updateCardElement(g, node, settings) {
-    const cardWidth = node.cardWidth || 280;
-    const fo = g.querySelector('.card-fo');
-    const rect = g.querySelector('.card-bg');
-
-    fo.setAttribute('width', cardWidth);
-    if (rect) rect.setAttribute('width', cardWidth);
-
-    const cardContent = fo.querySelector('.card-content');
-    const titleEl = cardContent.querySelector('.card-title');
-    const toggleEl = cardContent.querySelector('.card-toggle');
-    const bodyEl = cardContent.querySelector('.card-body');
-
-    // Update title
-    if (!titleEl._editing) {
-        titleEl.textContent = node.text;
-    }
-
-    // Render tag pills in card header
-    let tagBar = g.querySelector('.card-tag-bar');
-    const nodeTags2 = node.tags || [];
-    const tagDefs2 = (settings && settings.tags) || [];
-    if (nodeTags2.length > 0) {
-        if (!tagBar) {
-            tagBar = document.createElement('div');
-            tagBar.className = 'card-tag-bar';
-            const header = g.querySelector('.card-header');
-            if (header) header.after(tagBar);
-        }
-        tagBar.innerHTML = '';
-        nodeTags2.forEach(tagId => {
-            const def = tagDefs2.find(t => t.id === tagId);
-            if (!def) return;
-            const pill = document.createElement('span');
-            pill.className = 'tag-pill';
-            pill.textContent = def.name;
-            pill.style.background = def.color || '#94a3b8';
-            tagBar.appendChild(pill);
-        });
-    } else if (tagBar) {
-        tagBar.remove();
-    }
-
-    // Update toggle
-    toggleEl.classList.toggle('expanded', !!node.cardExpanded);
-
-    // Update body markdown (cached)
-    if (!bodyEl._editing) {
-        if (node.body !== node._bodyRaw) {
-            node._bodyRaw = node.body;
-            if (node.body && typeof marked !== 'undefined') {
-                node._bodyHtml = marked.parse(node.body, { breaks: true, gfm: true });
-            } else {
-                node._bodyHtml = node.body ? escapeHtml(node.body).replace(/\n/g, '<br>') : '';
-            }
-        }
-        bodyEl.innerHTML = node._bodyHtml ||
-            '<span class="card-body-placeholder">Double-clic pour éditer…</span>';
-    }
-
-    // Expanded/collapsed class
-    bodyEl.className = 'card-body ' + (node.cardExpanded ? 'expanded' : 'collapsed');
-
-    // Measure height after browser layout and update
-    requestAnimationFrame(() => {
-        if (!cardContent.isConnected) return;
-        const h = cardContent.offsetHeight || 120;
-        if (Math.abs(h - (node.h || 0)) > 2) {
-            node.h = h;
-            fo.setAttribute('height', h);
-            if (rect) rect.setAttribute('height', h);
-        }
-    });
-
-    // Set tentative height immediately so rect shows something
-    const currentH = node.h || 120;
-    fo.setAttribute('height', currentH);
-    if (rect) rect.setAttribute('height', currentH);
-}
-
-function escapeHtml(str) {
-    return str
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
 }
 
 // ── Free links rendering ────────────────────────────────────────────────────

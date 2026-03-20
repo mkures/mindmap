@@ -15,9 +15,6 @@ import {
     toggleCollapse,
     setNodeSide,
     addFreeBubble,
-    addCard,
-    convertToCard,
-    toggleCardExpanded,
     addLink,
     deleteLink,
     addTagDef,
@@ -189,6 +186,7 @@ function wireUI() {
             closeConfig();
             closeMapList();
             closeHelp();
+            closeNoteModal();
         });
     }
 
@@ -441,12 +439,6 @@ function wireUI() {
         if (!map) return;
         const g = e.target.closest('.node');
         if (g) {
-            const node = map.nodes[g.dataset.id];
-            if (node?.nodeType === 'card') {
-                // Card title: handled via mindmap:card-title-click
-                // Card body: handled via mindmap:card-body-dblclick
-                return;
-            }
             startEditing(g.dataset.id);
         } else {
             // Double-click on canvas background → create free bubble
@@ -567,7 +559,7 @@ function wireUI() {
     }
 
     if (outlineBtn) {
-        outlineBtn.onclick = toggleOutline;
+        outlineBtn.onclick = () => toggleOutline();
     }
 
     viewport.addEventListener('contextmenu', e => {
@@ -576,8 +568,20 @@ function wireUI() {
         const nodeEl = e.target.closest('.node');
         if (!nodeEl) return;
         const nodeId = nodeEl.dataset.id;
-        showTagContextMenu(e.clientX, e.clientY, nodeId);
+        showNodeContextMenu(e.clientX, e.clientY, nodeId);
     });
+
+    // Note modal wiring
+    const noteCloseBtn = document.getElementById('noteCloseBtn');
+    if (noteCloseBtn) noteCloseBtn.addEventListener('click', closeNoteModal);
+    const noteSaveBtn = document.getElementById('noteSaveBtn');
+    if (noteSaveBtn) noteSaveBtn.addEventListener('click', closeNoteModal);
+    const noteTextarea = document.getElementById('noteModalBody');
+    if (noteTextarea) {
+        noteTextarea.addEventListener('keydown', e => {
+            if (e.key === 'Escape') { e.preventDefault(); closeNoteModal(); }
+        });
+    }
 
     const addTagDefBtn = document.getElementById('addTagDefBtn');
     if (addTagDefBtn) {
@@ -601,46 +605,6 @@ function wireUI() {
     mq.addEventListener('change', e => {
         if (e.matches && !outlineMode) toggleOutline(true);
         else if (!e.matches && outlineMode) toggleOutline(false);
-    });
-
-    // Card custom events (dispatched from render.js)
-    document.addEventListener('mindmap:card-toggle', e => {
-        if (!map) return;
-        const { nodeId } = e.detail;
-        toggleCardExpanded(map, nodeId);
-        update();
-        markMapChanged();
-    });
-
-    document.addEventListener('mindmap:card-title-click', e => {
-        if (!map) return;
-        const { nodeId, titleEl } = e.detail;
-        if (!titleEl || titleEl._editing) return;
-        selectedId = nodeId;
-        startCardTitleEditing(nodeId, titleEl);
-        update();
-    });
-
-    document.addEventListener('mindmap:card-body-dblclick', e => {
-        if (!map) return;
-        const { nodeId } = e.detail;
-        selectedId = nodeId;
-        startCardBodyEditing(nodeId);
-    });
-
-    document.addEventListener('mindmap:card-select', e => {
-        if (!map) return;
-        selectedId = e.detail.nodeId;
-        selectLink(null);
-        update();
-    });
-
-    document.addEventListener('mindmap:card-drag-start', e => {
-        if (!map) return;
-        const { nodeId, clientX, clientY, shiftKey } = e.detail;
-        const nodeEl = viewport.querySelector(`.node[data-id="${nodeId}"]`);
-        if (!nodeEl) return;
-        startNodeDrag(nodeEl, { clientX, clientY, shiftKey, button: 0 });
     });
 
     window.addEventListener('keydown', e => {
@@ -710,33 +674,7 @@ function wireUI() {
                     markMapChanged();
                 }
             }
-        } else if (e.key === 'n' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-            e.preventDefault();
-            // Create a card at the center of the visible canvas area
-            const svgRect = svgElement.getBoundingClientRect();
-            const centerX = (svgRect.width / 2 - pan.x) / pan.scale;
-            const centerY = (svgRect.height / 2 - pan.y) / pan.scale;
-            const id = addCard(map, centerX - 140, centerY - 60);
-            selectedId = id;
-            selectLink(null);
-            markLayoutDirty();
-            update();
-            markMapChanged();
-        } else if (e.key === 'm' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-            e.preventDefault();
-            if (selectedId && map.nodes[selectedId]?.placement === 'free' && map.nodes[selectedId]?.nodeType !== 'card') {
-                if (convertToCard(map, selectedId)) {
-                    markLayoutDirty();
-                    update();
-                    markMapChanged();
-                }
-            }
         } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-            // Don't hijack 'n' and 'm' (handled above)
-            if (e.key === 'n' || e.key === 'm') return;
-            // Only edit tree/free bubbles, not cards (cards have their own editing)
-            const selNode = selectedId ? map.nodes[selectedId] : null;
-            if (selNode?.nodeType === 'card') return;
             startEditing(selectedId, e.key);
             e.preventDefault();
         }
@@ -920,27 +858,8 @@ function startNodeDrag(nodeEl, event) {
         return;
     }
 
-    // Free nodes (bubbles and cards)
+    // Free nodes (bubbles)
     if (node.placement === 'free') {
-        // Check for card resize: click near right edge
-        if (node.nodeType === 'card') {
-            const clickSvgX = (event.clientX - svgRect.left - pan.x) / pan.scale;
-            const nodeRightEdge = (node.fx || 0) + (node.cardWidth || 280);
-            if (Math.abs(clickSvgX - nodeRightEdge) < 10 / pan.scale) {
-                dragState = {
-                    id,
-                    mode: 'resize',
-                    startClientX: event.clientX,
-                    startCardWidth: node.cardWidth || 280,
-                    startX: event.clientX,
-                    startY: event.clientY,
-                    hasMoved: false,
-                    originEl: nodeEl
-                };
-                return;
-            }
-        }
-
         // Free drag
         const clickSvgX = (event.clientX - svgRect.left - pan.x) / pan.scale;
         const clickSvgY = (event.clientY - svgRect.top - pan.y) / pan.scale;
@@ -1284,87 +1203,6 @@ function finishEditing() {
     markMapChanged();
 }
 
-function startCardTitleEditing(nodeId, titleEl) {
-    if (!map || !titleEl) return;
-    const node = map.nodes[nodeId];
-    if (!node) return;
-    titleEl._editing = true;
-
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.value = node.text;
-    input.style.cssText = 'font-weight:600;font-size:14px;border:none;outline:none;background:transparent;width:100%;font-family:inherit;';
-
-    const originalText = node.text;
-    titleEl.textContent = '';
-    titleEl.appendChild(input);
-    input.focus();
-    input.select();
-
-    function finish() {
-        const newText = input.value.trim() || originalText;
-        node.text = newText;
-        titleEl._editing = false;
-        titleEl.textContent = newText;
-        markLayoutDirty();
-        update();
-        markMapChanged();
-    }
-
-    input.addEventListener('blur', finish, { once: true });
-    input.addEventListener('keydown', e => {
-        if (e.key === 'Enter' || e.key === 'Escape') {
-            if (e.key === 'Escape') input.value = originalText;
-            input.blur();
-        }
-        e.stopPropagation();
-    });
-}
-
-function startCardBodyEditing(nodeId) {
-    if (!map) return;
-    const node = map.nodes[nodeId];
-    if (!node || node.nodeType !== 'card') return;
-
-    // Find the card's foreignObject body element in the DOM
-    const nodeEl = viewport.querySelector(`.node[data-id="${nodeId}"]`);
-    if (!nodeEl) return;
-    const bodyEl = nodeEl.querySelector('.card-body');
-    if (!bodyEl || bodyEl._editing) return;
-
-    bodyEl._editing = true;
-    const originalBody = node.body || '';
-
-    const textarea = document.createElement('textarea');
-    textarea.className = 'card-body-edit';
-    textarea.value = originalBody;
-    textarea.style.height = Math.max(120, bodyEl.scrollHeight) + 'px';
-
-    bodyEl.innerHTML = '';
-    bodyEl.appendChild(textarea);
-    textarea.focus();
-
-    function finish() {
-        const newBody = textarea.value;
-        node.body = newBody;
-        node._bodyRaw = null; // Force re-parse
-        bodyEl._editing = false;
-        markLayoutDirty();
-        update();
-        markMapChanged();
-    }
-
-    textarea.addEventListener('blur', finish, { once: true });
-    textarea.addEventListener('keydown', e => {
-        if (e.key === 'Escape') {
-            textarea.value = originalBody;
-            textarea.blur();
-        }
-        e.stopPropagation();
-    });
-    textarea.addEventListener('mousedown', e => e.stopPropagation());
-}
-
 function openConfig() {
     if (!map) return;
     ensureSettings(map);
@@ -1382,14 +1220,18 @@ function openConfig() {
 
 function closeConfig() {
     configModal.classList.add('hidden');
-    if (mapListModal.classList.contains('hidden') && helpModal.classList.contains('hidden')) {
+    const noteModal = document.getElementById('noteModal');
+    if (mapListModal.classList.contains('hidden') && helpModal.classList.contains('hidden') &&
+        (!noteModal || noteModal.classList.contains('hidden'))) {
         modalBackdrop.classList.add('hidden');
     }
 }
 
 function closeHelp() {
     helpModal.classList.add('hidden');
-    if (configModal.classList.contains('hidden') && mapListModal.classList.contains('hidden')) {
+    const noteModal = document.getElementById('noteModal');
+    if (configModal.classList.contains('hidden') && mapListModal.classList.contains('hidden') &&
+        (!noteModal || noteModal.classList.contains('hidden'))) {
         modalBackdrop.classList.add('hidden');
     }
 }
@@ -1452,37 +1294,59 @@ function populateTagDefs() {
     });
 }
 
-function showTagContextMenu(x, y, nodeId) {
-    document.querySelectorAll('.tag-context-menu').forEach(m => m.remove());
-    const tags = (map.settings && map.settings.tags) || [];
-    if (!tags.length) return;
+function showNodeContextMenu(x, y, nodeId) {
+    document.querySelectorAll('.node-context-menu').forEach(m => m.remove());
     const node = map.nodes[nodeId];
     if (!node) return;
+    const tags = (map.settings && map.settings.tags) || [];
     const nodeTags = node.tags || [];
 
     const menu = document.createElement('div');
-    menu.className = 'context-menu tag-context-menu';
+    menu.className = 'context-menu node-context-menu';
 
-    const header = document.createElement('div');
-    header.className = 'move-menu-header';
-    header.textContent = 'Etiquettes';
-    menu.appendChild(header);
+    // Note section
+    const noteBtn = document.createElement('button');
+    noteBtn.innerHTML = `✎ ${node.body ? 'Modifier la note' : 'Ajouter une note'}`;
+    noteBtn.onclick = () => { menu.remove(); openNoteModal(nodeId); };
+    menu.appendChild(noteBtn);
 
-    tags.forEach(tag => {
-        const btn = document.createElement('button');
-        const isActive = nodeTags.includes(tag.id);
-        btn.innerHTML = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${tag.color};margin-right:8px;vertical-align:middle;"></span>${tag.name}${isActive ? ' ✓' : ''}`;
-        btn.onclick = () => {
-            menu.remove();
-            toggleNodeTag(map, nodeId, tag.id);
-            update();
-            markMapChanged();
-        };
-        menu.appendChild(btn);
-    });
+    // Image section
+    const imgBtn = document.createElement('button');
+    imgBtn.innerHTML = '🖼 Ajouter une image';
+    imgBtn.onclick = () => {
+        menu.remove();
+        selectedId = nodeId;
+        imageInput.click();
+    };
+    menu.appendChild(imgBtn);
+
+    // Tags section (only if tags exist)
+    if (tags.length > 0) {
+        const sep = document.createElement('div');
+        sep.className = 'context-menu-sep';
+        menu.appendChild(sep);
+
+        const header = document.createElement('div');
+        header.className = 'move-menu-header';
+        header.textContent = 'Étiquettes';
+        menu.appendChild(header);
+
+        tags.forEach(tag => {
+            const btn = document.createElement('button');
+            const isActive = nodeTags.includes(tag.id);
+            btn.innerHTML = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${tag.color};margin-right:8px;vertical-align:middle;"></span>${tag.name}${isActive ? ' ✓' : ''}`;
+            btn.onclick = () => {
+                menu.remove();
+                toggleNodeTag(map, nodeId, tag.id);
+                update();
+                markMapChanged();
+            };
+            menu.appendChild(btn);
+        });
+    }
 
     menu.style.position = 'fixed';
-    menu.style.top = Math.min(y, window.innerHeight - 200) + 'px';
+    menu.style.top = Math.min(y, window.innerHeight - 250) + 'px';
     menu.style.left = Math.min(x, window.innerWidth - 200) + 'px';
     document.body.appendChild(menu);
 
@@ -1492,6 +1356,45 @@ function showTagContextMenu(x, y, nodeId) {
             document.removeEventListener('click', close);
         }, { once: true });
     }, 0);
+}
+
+function openNoteModal(nodeId) {
+    if (!map) return;
+    const node = map.nodes[nodeId];
+    if (!node) return;
+    const modal = document.getElementById('noteModal');
+    const titleEl = document.getElementById('noteModalTitle');
+    const textarea = document.getElementById('noteModalBody');
+    if (!modal || !titleEl || !textarea) return;
+    titleEl.textContent = node.text || 'Sans titre';
+    textarea.value = node.body || '';
+    modal.dataset.nodeId = nodeId;
+    modal.classList.remove('hidden');
+    modalBackdrop.classList.remove('hidden');
+    textarea.focus();
+}
+
+function closeNoteModal() {
+    const modal = document.getElementById('noteModal');
+    const textarea = document.getElementById('noteModalBody');
+    if (!modal) return;
+    if (!modal.classList.contains('hidden')) {
+        const nodeId = modal.dataset.nodeId;
+        if (nodeId && map && map.nodes[nodeId] && textarea) {
+            const newBody = textarea.value;
+            if (newBody !== (map.nodes[nodeId].body || '')) {
+                map.nodes[nodeId].body = newBody;
+                update();
+                markMapChanged();
+            }
+        }
+        modal.classList.add('hidden');
+    }
+    if (document.getElementById('mapListModal').classList.contains('hidden') &&
+        document.getElementById('configModal').classList.contains('hidden') &&
+        document.getElementById('helpModal').classList.contains('hidden')) {
+        modalBackdrop.classList.add('hidden');
+    }
 }
 
 function toggleOutline(force) {

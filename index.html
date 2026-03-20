@@ -137,8 +137,7 @@
                     <h3>Tableau (board)</h3>
                     <dl class="help-shortcuts">
                         <dt>Double-clic (fond vide)</dt><dd>Créer une bulle libre</dd>
-                        <dt>N</dt><dd>Créer une card markdown</dd>
-                        <dt>M (sur bulle libre)</dt><dd>Convertir en card</dd>
+                        <dt>Clic droit</dt><dd>Menu contextuel (note, image, tags)</dd>
                         <dt>Shift + glisser (noeud)</dt><dd>Tracer un lien libre</dd>
                         <dt>Clic sur lien + Suppr</dt><dd>Supprimer le lien</dd>
                     </dl>
@@ -157,7 +156,20 @@
             </div>
         </div>
     </div>
-    <!-- marked.js for Markdown rendering in cards -->
+    <!-- Note Modal -->
+    <div id="noteModal" class="modal hidden" style="max-width:600px;width:95vw;">
+        <div class="modal-content">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                <h2 id="noteModalTitle" style="margin:0;font-size:16px;"></h2>
+                <button id="noteCloseBtn" class="secondary" style="padding:4px 10px;font-size:13px;">✕</button>
+            </div>
+            <textarea id="noteModalBody" placeholder="Écrivez votre note en Markdown…" style="width:100%;min-height:320px;resize:vertical;font-family:monospace;font-size:13px;line-height:1.6;border:1px solid var(--border);border-radius:6px;padding:10px;box-sizing:border-box;background:var(--bg-primary);color:var(--text-primary);"></textarea>
+            <div class="modal-actions" style="margin-top:12px;">
+                <button id="noteSaveBtn">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+    <!-- marked.js for Markdown rendering -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
     <script type="module" src="src/main.js"></script>
 </body>

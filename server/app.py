@@ -164,6 +164,10 @@ def _try_basic_auth():
     """Try HTTP Basic Auth, return user dict or None."""
     auth = request.authorization
     if not auth or not auth.username or not auth.password:
+        print(f"[BASIC_AUTH] No auth header parsed. Authorization header present: {'Authorization' in request.headers}",
+              flush=True)
+        if 'Authorization' in request.headers:
+            print(f"[BASIC_AUTH] Raw header: {request.headers['Authorization'][:30]}...", flush=True)
         return None
     conn = get_db()
     cursor = conn.execute(

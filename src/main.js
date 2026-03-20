@@ -590,6 +590,15 @@ function wireUI() {
         e.stopPropagation();
     });
 
+    // Note toolbar actions
+    document.getElementById('noteToolbar')?.addEventListener('click', e => {
+        const btn = e.target.closest('.ntb[data-action]');
+        if (!btn) return;
+        const ta = document.getElementById('noteModalBody');
+        if (!ta) return;
+        insertMd(ta, btn.dataset.action);
+    });
+
     // Lightbox
     const lightboxModal = document.getElementById('lightboxModal');
     if (lightboxModal) {
@@ -1434,6 +1443,54 @@ function showNodeContextMenu(x, y, nodeId) {
             document.removeEventListener('click', close);
         }, { once: true });
     }, 0);
+}
+
+function insertMd(ta, action) {
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const sel = ta.value.substring(start, end);
+    const lineStart = ta.value.lastIndexOf('\n', start - 1) + 1;
+
+    const wrap = (before, after, placeholder) => {
+        const text = sel || placeholder;
+        const result = before + text + after;
+        ta.value = ta.value.substring(0, start) + result + ta.value.substring(end);
+        ta.selectionStart = start + before.length;
+        ta.selectionEnd = start + before.length + text.length;
+        ta.focus();
+    };
+
+    const prefix = (marker, placeholder) => {
+        const before = ta.value.substring(0, lineStart);
+        const line = ta.value.substring(lineStart, end) || placeholder;
+        ta.value = before + marker + line + ta.value.substring(end);
+        ta.selectionStart = lineStart + marker.length;
+        ta.selectionEnd = lineStart + marker.length + line.length;
+        ta.focus();
+    };
+
+    switch (action) {
+        case 'bold':       wrap('**', '**', 'texte'); break;
+        case 'italic':     wrap('*', '*', 'texte'); break;
+        case 'strike':     wrap('~~', '~~', 'texte'); break;
+        case 'h1':         prefix('# ', 'Titre'); break;
+        case 'h2':         prefix('## ', 'Titre'); break;
+        case 'h3':         prefix('### ', 'Titre'); break;
+        case 'ul':         prefix('- ', 'élément'); break;
+        case 'ol':         prefix('1. ', 'élément'); break;
+        case 'task':       prefix('- [ ] ', 'tâche'); break;
+        case 'quote':      prefix('> ', 'citation'); break;
+        case 'code':       wrap('`', '`', 'code'); break;
+        case 'codeblock':  wrap('```\n', '\n```', 'code'); break;
+        case 'link':       wrap('[', '](https://)', sel || 'texte'); break;
+        case 'hr': {
+            const ins = '\n---\n';
+            ta.value = ta.value.substring(0, end) + ins + ta.value.substring(end);
+            ta.selectionStart = ta.selectionEnd = end + ins.length;
+            ta.focus();
+            break;
+        }
+    }
 }
 
 function openNoteModal(nodeId) {

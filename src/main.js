@@ -1445,7 +1445,7 @@ function openNoteModal(nodeId) {
             _noteEditor = new window.toastui.Editor({
                 el: container,
                 height: '380px',
-                initialEditType: 'markdown',
+                initialEditType: 'wysiwyg',
                 previewStyle: 'tab',
                 initialValue,
                 toolbarItems: [

@@ -1423,3 +1423,33 @@ body.dragging-node {
 }
 
 
+
+/* ── Frames ──────────────────────────────────────────────────────────────── */
+.frame {
+    cursor: move;
+}
+
+.frame-bg {
+    transition: stroke-opacity 0.15s, stroke-width 0.15s;
+}
+
+.frame:hover .frame-bg {
+    stroke-opacity: 0.85;
+}
+
+.frame.selected .frame-bg {
+    stroke-width: 2.5;
+    stroke-dasharray: none;
+    filter: drop-shadow(0 0 4px rgba(59, 130, 246, 0.3));
+}
+
+.frame-title {
+    pointer-events: none;
+    user-select: none;
+    font-family: inherit;
+}
+
+.frame-resize-handle {
+    fill: transparent;
+    cursor: nwse-resize;
+}

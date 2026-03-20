@@ -357,3 +357,41 @@ export function toggleNodeTag(map, nodeId, tagId) {
     else node.tags.push(tagId);
     map.updatedAt = Date.now();
 }
+
+// ── Frames ────────────────────────────────────────────────────────────────
+
+export function addFrame(map, x, y, w = 400, h = 300) {
+    if (!map.frames) map.frames = [];
+    const id = 'f' + Date.now();
+    const frame = { id, title: 'Zone', color: '#dbeafe', x, y, w, h };
+    map.frames.push(frame);
+    map.updatedAt = Date.now();
+    return frame;
+}
+
+export function deleteFrame(map, frameId) {
+    if (!map.frames) return;
+    map.frames = map.frames.filter(f => f.id !== frameId);
+    map.updatedAt = Date.now();
+}
+
+export function updateFrame(map, frameId, updates) {
+    if (!map.frames) return null;
+    const frame = map.frames.find(f => f.id === frameId);
+    if (!frame) return null;
+    Object.assign(frame, updates);
+    map.updatedAt = Date.now();
+    return frame;
+}
+
+export function getNodesInFrame(map, frameId) {
+    const frame = (map.frames || []).find(f => f.id === frameId);
+    if (!frame) return [];
+    return Object.values(map.nodes).filter(node => {
+        if (node.placement !== 'free') return false;
+        const cx = (node.fx ?? node.x ?? 0) + (node.w || 0) / 2;
+        const cy = (node.fy ?? node.y ?? 0) + (node.h || 0) / 2;
+        return cx >= frame.x && cx <= frame.x + frame.w
+            && cy >= frame.y && cy <= frame.y + frame.h;
+    });
+}

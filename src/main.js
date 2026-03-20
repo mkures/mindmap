@@ -19,10 +19,14 @@ import {
     deleteLink,
     addTagDef,
     removeTagDef,
-    toggleNodeTag
+    toggleNodeTag,
+    addFrame,
+    deleteFrame,
+    updateFrame,
+    getNodesInFrame
 } from './model.js';
 import { layout } from './layout.js';
-import { render, clearRenderCache, setSelectedLinkId } from './render.js';
+import { render, clearRenderCache, setSelectedLinkId, setSelectedFrameId } from './render.js';
 import { exportMarkdown, exportImage, exportPdf } from './export.js';
 import { initOutline, renderOutline } from './outline.js';
 
@@ -103,6 +107,16 @@ let lastSaveError = null;
 let clipboard = null; // Stores copied subtree
 let selectedLinkId = null; // Currently selected free link
 let linkPreviewEl = null; // Temporary SVG line during link creation
+
+const FRAME_COLORS = [
+    { label: 'Bleu',   fill: '#dbeafe' },
+    { label: 'Vert',   fill: '#dcfce7' },
+    { label: 'Jaune',  fill: '#fef9c3' },
+    { label: 'Rose',   fill: '#fce7f3' },
+    { label: 'Violet', fill: '#ede9fe' },
+    { label: 'Gris',   fill: '#f3f4f6' },
+];
+let selectedFrameId = null;
 
 let currentFolderId = null; // null = root
 let currentFolderName = null;
@@ -436,6 +450,11 @@ function wireUI() {
         const g = e.target.closest('.node');
         if (g) {
             startEditing(g.dataset.id);
+            return;
+        }
+        const frameEl = e.target.closest('.frame');
+        if (frameEl) {
+            startFrameTitleEdit(frameEl.dataset.frameId);
         }
     });
 
@@ -456,9 +475,13 @@ function wireUI() {
 
         const nodeEl = e.target.closest('.node');
         if (nodeEl) {
-            // Clicking on a node deselects the link
+            // Clicking on a node deselects the link and frame
             if (selectedLinkId) {
                 selectLink(null);
+                update();
+            }
+            if (selectedFrameId) {
+                selectFrame(null);
                 update();
             }
             e.preventDefault();
@@ -466,9 +489,25 @@ function wireUI() {
             return;
         }
 
-        // Click on canvas background → deselect link
+        // Frame click
+        const frameEl = e.target.closest('.frame');
+        if (frameEl) {
+            const frameId = frameEl.dataset.frameId;
+            selectFrame(frameId);
+            selectedId = null;
+            e.preventDefault();
+            startFrameInteraction(frameId, e);
+            update();
+            return;
+        }
+
+        // Click on canvas background → deselect link and frame
         if (selectedLinkId) {
             selectLink(null);
+            update();
+        }
+        if (selectedFrameId) {
+            selectFrame(null);
             update();
         }
 
@@ -553,7 +592,15 @@ function wireUI() {
         if (nodeEl) {
             showNodeContextMenu(e.clientX, e.clientY, nodeEl.dataset.id);
         } else {
-            showCanvasContextMenu(e.clientX, e.clientY, e);
+            const frameEl = e.target.closest('.frame');
+            if (frameEl) {
+                const frameId = frameEl.dataset.frameId;
+                selectFrame(frameId);
+                update();
+                showFrameContextMenu(e.clientX, e.clientY, frameId);
+            } else {
+                showCanvasContextMenu(e.clientX, e.clientY, e);
+            }
         }
     });
 
@@ -611,10 +658,16 @@ function wireUI() {
             addSiblingBtn?.onclick();
         } else if (e.key === 'Delete' || e.key === 'Backspace') {
             e.preventDefault();
-            // Delete selected link first, then selected node
             if (selectedLinkId) {
                 deleteLink(map, selectedLinkId);
                 selectLink(null);
+                update();
+                markMapChanged();
+                return;
+            }
+            if (selectedFrameId) {
+                deleteFrame(map, selectedFrameId);
+                selectFrame(null);
                 update();
                 markMapChanged();
                 return;
@@ -667,6 +720,17 @@ function wireUI() {
                     markMapChanged();
                 }
             }
+        } else if (e.key === 'F' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            e.preventDefault();
+            const svgW = svgElement.clientWidth;
+            const svgH = svgElement.clientHeight;
+            const cx = (svgW / 2 - pan.x) / pan.scale;
+            const cy = (svgH / 2 - pan.y) / pan.scale;
+            const frame = addFrame(map, cx - 200, cy - 150, 400, 300);
+            selectFrame(frame.id);
+            update();
+            markMapChanged();
+            requestAnimationFrame(() => startFrameTitleEdit(frame.id));
         } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
             startEditing(selectedId, e.key);
             e.preventDefault();
@@ -748,6 +812,7 @@ function setCurrentMap(newMap, { center = true, remember = true } = {}) {
     autosavePending = false;
     lastSaveError = null;
     selectLink(null);
+    selectFrame(null);
     clearRenderCache();
     if (remember && map?.id) {
         localStorage.setItem(LAST_MAP_STORAGE_KEY, map.id);
@@ -887,6 +952,88 @@ function startNodeDrag(nodeEl, event) {
     };
 }
 
+function startFrameInteraction(frameId, event) {
+    if (!map) return;
+    const frame = (map.frames || []).find(f => f.id === frameId);
+    if (!frame) return;
+
+    const svgRect = svgElement.getBoundingClientRect();
+    const svgX = (event.clientX - svgRect.left - pan.x) / pan.scale;
+    const svgY = (event.clientY - svgRect.top - pan.y) / pan.scale;
+
+    // Detect resize handle click
+    if (event.target.classList.contains('frame-resize-handle')) {
+        dragState = {
+            mode: 'frameresize',
+            id: frameId,
+            startClientX: event.clientX,
+            startClientY: event.clientY,
+            startW: frame.w,
+            startH: frame.h,
+            startX: event.clientX,
+            startY: event.clientY,
+            hasMoved: false,
+        };
+        return;
+    }
+
+    // Move mode — capture contained nodes and their offsets from frame origin
+    const containedNodes = getNodesInFrame(map, frameId).map(node => ({
+        id: node.id,
+        dx: (node.fx ?? node.x ?? 0) - frame.x,
+        dy: (node.fy ?? node.y ?? 0) - frame.y,
+    }));
+    dragState = {
+        mode: 'framemove',
+        id: frameId,
+        svgOffsetX: svgX - frame.x,
+        svgOffsetY: svgY - frame.y,
+        startX: event.clientX,
+        startY: event.clientY,
+        containedNodes,
+        hasMoved: false,
+    };
+}
+
+function startFrameTitleEdit(frameId) {
+    if (!map) return;
+    const frame = (map.frames || []).find(f => f.id === frameId);
+    if (!frame) return;
+    const frameEl = viewport.querySelector(`.frame[data-frame-id="${frameId}"]`);
+    if (!frameEl) return;
+    const titleEl = frameEl.querySelector('.frame-title');
+    if (!titleEl) return;
+
+    const bbox = titleEl.getBoundingClientRect();
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'edit-input';
+    input.value = frame.title || 'Zone';
+    input.style.left = bbox.left + 'px';
+    input.style.top = bbox.top + 'px';
+    input.style.width = Math.max(bbox.width + 40, 140) + 'px';
+    input.style.fontSize = '13px';
+    input.style.fontWeight = '600';
+    document.body.appendChild(input);
+    input.focus();
+    input.select();
+
+    let finished = false;
+    function finish() {
+        if (finished) return;
+        finished = true;
+        const newTitle = input.value.trim() || 'Zone';
+        updateFrame(map, frameId, { title: newTitle });
+        input.remove();
+        update();
+        markMapChanged();
+    }
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); finish(); }
+    });
+    input.addEventListener('blur', finish);
+}
+
 let lastDropTargetCheck = 0;
 const DROP_TARGET_THROTTLE = 50;
 
@@ -904,6 +1051,36 @@ function updateNodeDrag(event) {
     }
     if (!dragState.hasMoved) return;
     event.preventDefault();
+
+    if (mode === 'framemove') {
+        const svgRect = svgElement.getBoundingClientRect();
+        const svgX = (event.clientX - svgRect.left - pan.x) / pan.scale;
+        const svgY = (event.clientY - svgRect.top - pan.y) / pan.scale;
+        const frame = (map.frames || []).find(f => f.id === dragState.id);
+        if (frame) {
+            frame.x = svgX - dragState.svgOffsetX;
+            frame.y = svgY - dragState.svgOffsetY;
+            dragState.containedNodes.forEach(({ id, dx, dy }) => {
+                const node = map.nodes[id];
+                if (node) { node.fx = frame.x + dx; node.fy = frame.y + dy; }
+            });
+        }
+        markLayoutDirty();
+        scheduleUpdate();
+        return;
+    }
+
+    if (mode === 'frameresize') {
+        const dx = (event.clientX - dragState.startClientX) / pan.scale;
+        const dy = (event.clientY - dragState.startClientY) / pan.scale;
+        const frame = (map.frames || []).find(f => f.id === dragState.id);
+        if (frame) {
+            frame.w = Math.max(100, dragState.startW + dx);
+            frame.h = Math.max(60, dragState.startH + dy);
+        }
+        scheduleUpdate();
+        return;
+    }
 
     if (mode === 'free') {
         const svgRect = svgElement.getBoundingClientRect();
@@ -974,6 +1151,16 @@ function updateNodeDrag(event) {
 function endNodeDrag() {
     if (!dragState || !map) return;
     const { mode, id, hasMoved } = dragState;
+
+    if (mode === 'framemove' || mode === 'frameresize') {
+        dragState = null;
+        if (hasMoved) {
+            markMapChanged();
+            update();
+        }
+        suppressClick = hasMoved;
+        return;
+    }
 
     if (mode === 'free') {
         const { originEl } = dragState;
@@ -1056,6 +1243,15 @@ function positionDragPreview(clientX, clientY) {
 function selectLink(linkId) {
     selectedLinkId = linkId;
     setSelectedLinkId(linkId);
+}
+
+function selectFrame(id) {
+    selectedFrameId = id;
+    setSelectedFrameId(id);
+    if (id !== null) {
+        selectedId = null;
+        selectLink(null);
+    }
 }
 
 function updateLinkPreview(event) {
@@ -1315,6 +1511,21 @@ function showCanvasContextMenu(x, y, mouseEvent) {
     };
     menu.appendChild(addBubbleBtn);
 
+    const addFrameBtn = document.createElement('button');
+    addFrameBtn.textContent = '⬜ Nouveau cadre';
+    addFrameBtn.onclick = () => {
+        menu.remove();
+        const svgRect = svgElement.getBoundingClientRect();
+        const svgX = (mouseEvent.clientX - svgRect.left - pan.x) / pan.scale;
+        const svgY = (mouseEvent.clientY - svgRect.top - pan.y) / pan.scale;
+        const frame = addFrame(map, svgX - 200, svgY - 150, 400, 300);
+        selectFrame(frame.id);
+        update();
+        markMapChanged();
+        requestAnimationFrame(() => startFrameTitleEdit(frame.id));
+    };
+    menu.appendChild(addFrameBtn);
+
     const fitBtn2 = document.createElement('button');
     fitBtn2.textContent = '⊡ Centrer la vue';
     fitBtn2.onclick = () => { menu.remove(); fitToScreen(); };
@@ -1323,6 +1534,74 @@ function showCanvasContextMenu(x, y, mouseEvent) {
     menu.style.position = 'fixed';
     menu.style.top = Math.min(y, window.innerHeight - 100) + 'px';
     menu.style.left = Math.min(x, window.innerWidth - 180) + 'px';
+    document.body.appendChild(menu);
+
+    setTimeout(() => {
+        document.addEventListener('click', function close() {
+            menu.remove();
+            document.removeEventListener('click', close);
+        }, { once: true });
+    }, 0);
+}
+
+function showFrameContextMenu(x, y, frameId) {
+    document.querySelectorAll('.node-context-menu').forEach(m => m.remove());
+    const frame = (map.frames || []).find(f => f.id === frameId);
+    if (!frame) return;
+
+    const menu = document.createElement('div');
+    menu.className = 'context-menu node-context-menu';
+
+    const renameBtn = document.createElement('button');
+    renameBtn.textContent = '✏ Renommer';
+    renameBtn.onclick = () => { menu.remove(); startFrameTitleEdit(frameId); };
+    menu.appendChild(renameBtn);
+
+    const sep = document.createElement('div');
+    sep.className = 'context-menu-sep';
+    menu.appendChild(sep);
+
+    const header = document.createElement('div');
+    header.className = 'move-menu-header';
+    header.textContent = 'Couleur de fond';
+    menu.appendChild(header);
+
+    const palette = document.createElement('div');
+    palette.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;padding:8px 14px;';
+    FRAME_COLORS.forEach(({ label, fill }) => {
+        const swatch = document.createElement('button');
+        swatch.title = label;
+        const isActive = fill === frame.color;
+        swatch.style.cssText = `width:24px;height:24px;border-radius:5px;background:${fill};border:2.5px solid ${isActive ? '#3b82f6' : 'transparent'};cursor:pointer;padding:0;min-width:unset;flex-shrink:0;`;
+        swatch.onclick = () => {
+            menu.remove();
+            updateFrame(map, frameId, { color: fill });
+            update();
+            markMapChanged();
+        };
+        palette.appendChild(swatch);
+    });
+    menu.appendChild(palette);
+
+    const sep2 = document.createElement('div');
+    sep2.className = 'context-menu-sep';
+    menu.appendChild(sep2);
+
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '🗑 Supprimer le cadre';
+    delBtn.style.color = 'var(--danger, #ef4444)';
+    delBtn.onclick = () => {
+        menu.remove();
+        deleteFrame(map, frameId);
+        if (selectedFrameId === frameId) selectFrame(null);
+        update();
+        markMapChanged();
+    };
+    menu.appendChild(delBtn);
+
+    menu.style.position = 'fixed';
+    menu.style.top = Math.min(y, window.innerHeight - 320) + 'px';
+    menu.style.left = Math.min(x, window.innerWidth - 200) + 'px';
     document.body.appendChild(menu);
 
     setTimeout(() => {

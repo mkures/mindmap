@@ -12,12 +12,34 @@ export function setSelectedLinkId(id) {
     _selectedLinkId = id;
 }
 
+let frameGroup = null;
+const frameElements = new Map();
+let _selectedFrameId = null;
+
+const FRAME_STROKE = {
+    '#dbeafe': '#93c5fd',
+    '#dcfce7': '#86efac',
+    '#fef9c3': '#fde047',
+    '#fce7f3': '#f9a8d4',
+    '#ede9fe': '#c4b5fd',
+    '#f3f4f6': '#d1d5db',
+};
+
+export function setSelectedFrameId(id) {
+    _selectedFrameId = id;
+}
+
 export function render(map, svg, selectedId) {
     const settings = map.settings || {};
 
     // Initialize groups if needed (first render or after clear)
     if (!linkGroup || !svg.contains(linkGroup)) {
         svg.innerHTML = '';
+
+        frameGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        frameGroup.id = 'frames';
+        svg.appendChild(frameGroup);
+
         linkGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         linkGroup.id = 'links';
         svg.appendChild(linkGroup);
@@ -33,7 +55,11 @@ export function render(map, svg, selectedId) {
         nodeElements.clear();
         linkElements.clear();
         freeLinkElements.clear();
+        frameElements.clear();
     }
+
+    // Render frames (background layer)
+    renderFrames(map);
 
     // Build set of visible nodes:
     // - tree nodes via collectVisible from root
@@ -415,11 +441,87 @@ function renderFreeLinks(map) {
     }
 }
 
+// ── Frame rendering ──────────────────────────────────────────────────────────
+
+function renderFrames(map) {
+    if (!frameGroup) return;
+    const frames = map.frames || [];
+    const currentFrameIds = new Set();
+
+    for (const frame of frames) {
+        currentFrameIds.add(frame.id);
+
+        let g = frameElements.get(frame.id);
+        if (!g) {
+            g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            g.classList.add('frame');
+            g.setAttribute('data-frame-id', frame.id);
+
+            const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            bg.classList.add('frame-bg');
+            bg.setAttribute('rx', '12');
+            bg.setAttribute('ry', '12');
+            g.appendChild(bg);
+
+            const titleEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            titleEl.classList.add('frame-title');
+            g.appendChild(titleEl);
+
+            const resizeHandle = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            resizeHandle.classList.add('frame-resize-handle');
+            resizeHandle.setAttribute('width', '16');
+            resizeHandle.setAttribute('height', '16');
+            resizeHandle.setAttribute('rx', '2');
+            g.appendChild(resizeHandle);
+
+            frameGroup.appendChild(g);
+            frameElements.set(frame.id, g);
+        }
+
+        g.setAttribute('transform', `translate(${frame.x},${frame.y})`);
+        g.classList.toggle('selected', frame.id === _selectedFrameId);
+
+        const stroke = FRAME_STROKE[frame.color] || '#cbd5e1';
+
+        const bg = g.querySelector('.frame-bg');
+        bg.setAttribute('width', frame.w);
+        bg.setAttribute('height', frame.h);
+        bg.setAttribute('fill', frame.color || '#dbeafe');
+        bg.setAttribute('fill-opacity', '0.35');
+        bg.setAttribute('stroke', stroke);
+        bg.setAttribute('stroke-width', '1.5');
+        bg.setAttribute('stroke-dasharray', '6 3');
+
+        const titleEl = g.querySelector('.frame-title');
+        titleEl.setAttribute('x', '12');
+        titleEl.setAttribute('y', '-10');
+        titleEl.setAttribute('font-size', '13');
+        titleEl.setAttribute('font-weight', '600');
+        titleEl.setAttribute('fill', stroke);
+        titleEl.textContent = frame.title || 'Zone';
+
+        const resizeHandle = g.querySelector('.frame-resize-handle');
+        resizeHandle.setAttribute('x', frame.w - 16);
+        resizeHandle.setAttribute('y', frame.h - 16);
+    }
+
+    // Remove stale frames
+    for (const [id, g] of frameElements) {
+        if (!currentFrameIds.has(id)) {
+            g.remove();
+            frameElements.delete(id);
+        }
+    }
+}
+
 // Function to clear cache (useful when loading a new map)
 export function clearRenderCache() {
     linkGroup = null;
     nodeGroup = null;
     freeLinkGroup = null;
+    frameGroup = null;
+    frameElements.clear();
+    _selectedFrameId = null;
     arrowMarkerCreated = false;
     nodeElements.clear();
     linkElements.clear();

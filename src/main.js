@@ -607,7 +607,7 @@ function wireUI() {
 
     window.addEventListener('keydown', e => {
         if (!map) return;
-        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target.isContentEditable) return;
         if (e.key === 'Tab') {
             e.preventDefault();
             addChildBtn?.onclick();

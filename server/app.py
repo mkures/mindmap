@@ -175,6 +175,7 @@ def _try_basic_auth():
         if 'Authorization' in request.headers:
             print(f"[BASIC_AUTH] Raw header: {request.headers['Authorization'][:30]}...", flush=True)
         return None
+    print(f"[BASIC_AUTH] Parsed credentials: username='{auth.username}'", flush=True)
     conn = get_db()
     cursor = conn.execute(
         'SELECT id, username, display_name, password_hash, is_admin FROM users WHERE username = ?',
@@ -182,7 +183,11 @@ def _try_basic_auth():
     )
     row = cursor.fetchone()
     conn.close()
-    if not row or not check_password_hash(row['password_hash'], auth.password):
+    if not row:
+        print(f"[BASIC_AUTH] User '{auth.username}' not found in DB", flush=True)
+        return None
+    if not check_password_hash(row['password_hash'], auth.password):
+        print(f"[BASIC_AUTH] Password mismatch for '{auth.username}'", flush=True)
         return None
     return dict(row)
 

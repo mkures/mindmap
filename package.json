@@ -1,0 +1,28 @@
+{
+  "name": "mindmap",
+  "version": "1.0.0",
+  "description": "A minimal single-page mind map editor built from scratch with vanilla JavaScript and SVG.",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:api": "pytest tests/test_api.py -v",
+    "test:e2e": "playwright test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mkures/mindmap.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/mkures/mindmap/issues"
+  },
+  "homepage": "https://github.com/mkures/mindmap#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "vitest": "^4.1.0"
+  }
+}

@@ -567,6 +567,28 @@ function wireUI() {
     if (noteCloseBtn) noteCloseBtn.addEventListener('click', closeNoteModal);
     const noteSaveBtn = document.getElementById('noteSaveBtn');
     if (noteSaveBtn) noteSaveBtn.addEventListener('click', closeNoteModal);
+    // Tab switching in note editor
+    document.querySelectorAll('.note-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.note-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            const isPreview = tab.dataset.tab === 'preview';
+            document.getElementById('noteWritePane').classList.toggle('hidden', isPreview);
+            const previewPane = document.getElementById('notePreviewPane');
+            previewPane.classList.toggle('hidden', !isPreview);
+            if (isPreview) {
+                const body = document.getElementById('noteModalBody').value;
+                previewPane.innerHTML = typeof marked !== 'undefined'
+                    ? marked.parse(body, { breaks: true, gfm: true })
+                    : `<pre>${body}</pre>`;
+            }
+        });
+    });
+    // Escape closes note modal
+    document.getElementById('noteModalBody')?.addEventListener('keydown', e => {
+        if (e.key === 'Escape') { e.preventDefault(); closeNoteModal(); }
+        e.stopPropagation();
+    });
 
     // Lightbox
     const lightboxModal = document.getElementById('lightboxModal');
@@ -1414,69 +1436,39 @@ function showNodeContextMenu(x, y, nodeId) {
     }, 0);
 }
 
-let _toastEditor = null;
-
 function openNoteModal(nodeId) {
     if (!map) return;
     const node = map.nodes[nodeId];
     if (!node) return;
     const modal = document.getElementById('noteModal');
     const titleEl = document.getElementById('noteModalTitle');
-    const editorEl = document.getElementById('noteEditorContainer');
-    if (!modal || !titleEl || !editorEl) return;
+    const textarea = document.getElementById('noteModalBody');
+    if (!modal || !titleEl || !textarea) return;
     titleEl.textContent = node.text || 'Sans titre';
+    textarea.value = node.body || '';
     modal.dataset.nodeId = nodeId;
+    // Reset to write tab
+    modal.querySelectorAll('.note-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'write'));
+    document.getElementById('noteWritePane').classList.remove('hidden');
+    document.getElementById('notePreviewPane').classList.add('hidden');
     modal.classList.remove('hidden');
     modalBackdrop.classList.remove('hidden');
-
-    // Init or reset Toast UI Editor
-    if (_toastEditor) {
-        _toastEditor.destroy();
-        _toastEditor = null;
-    }
-    editorEl.innerHTML = '';
-    if (window.toastui && window.toastui.Editor) {
-        _toastEditor = new window.toastui.Editor({
-            el: editorEl,
-            height: '360px',
-            initialEditType: 'markdown',
-            previewStyle: 'tab',
-            initialValue: node.body || '',
-            language: 'fr-FR',
-            toolbarItems: [
-                ['heading', 'bold', 'italic', 'strike'],
-                ['hr', 'quote'],
-                ['ul', 'ol', 'task'],
-                ['table', 'link'],
-                ['code', 'codeblock'],
-            ],
-        });
-    } else {
-        // Fallback to textarea if Toast UI not loaded
-        editorEl.innerHTML = `<textarea style="width:100%;min-height:360px;resize:vertical;font-family:monospace;font-size:13px;line-height:1.6;border:1px solid var(--border);border-radius:6px;padding:10px;box-sizing:border-box;">${(node.body || '').replace(/</g, '&lt;')}</textarea>`;
-    }
+    textarea.focus();
 }
 
 function closeNoteModal() {
     const modal = document.getElementById('noteModal');
-    const editorEl = document.getElementById('noteEditorContainer');
     if (!modal || modal.classList.contains('hidden')) return;
     const nodeId = modal.dataset.nodeId;
-    if (nodeId && map && map.nodes[nodeId]) {
-        let newBody = '';
-        if (_toastEditor) {
-            newBody = _toastEditor.getMarkdown();
-        } else if (editorEl) {
-            const ta = editorEl.querySelector('textarea');
-            newBody = ta ? ta.value : '';
-        }
+    const textarea = document.getElementById('noteModalBody');
+    if (nodeId && map && map.nodes[nodeId] && textarea) {
+        const newBody = textarea.value;
         if (newBody !== (map.nodes[nodeId].body || '')) {
             map.nodes[nodeId].body = newBody;
             update();
             markMapChanged();
         }
     }
-    if (_toastEditor) { _toastEditor.destroy(); _toastEditor = null; }
     modal.classList.add('hidden');
     const noteViewModal = document.getElementById('noteViewModal');
     if (document.getElementById('mapListModal').classList.contains('hidden') &&
@@ -1500,8 +1492,6 @@ function closeLightbox() {
     if (lb) lb.classList.add('hidden');
 }
 
-let _toastViewer = null;
-
 function openNoteViewModal(nodeId) {
     if (!map) return;
     const node = map.nodes[nodeId];
@@ -1513,20 +1503,9 @@ function openNoteViewModal(nodeId) {
     if (!modal || !titleEl || !viewerEl) return;
     titleEl.textContent = node.text || 'Sans titre';
     modal.dataset.nodeId = nodeId;
-
-    if (_toastViewer) { _toastViewer.destroy(); _toastViewer = null; }
-    viewerEl.innerHTML = '';
-    if (window.toastui && window.toastui.Editor) {
-        _toastViewer = window.toastui.Editor.factory({
-            el: viewerEl,
-            viewer: true,
-            initialValue: node.body || '',
-        });
-    } else {
-        viewerEl.innerHTML = typeof marked !== 'undefined'
-            ? marked.parse(node.body || '', { breaks: true, gfm: true })
-            : `<pre>${node.body}</pre>`;
-    }
+    viewerEl.innerHTML = typeof marked !== 'undefined'
+        ? marked.parse(node.body, { breaks: true, gfm: true })
+        : `<pre>${node.body}</pre>`;
     if (editBtn) editBtn.onclick = () => { closeNoteViewModal(); openNoteModal(nodeId); };
     modal.classList.remove('hidden');
     modalBackdrop.classList.remove('hidden');
@@ -1535,7 +1514,6 @@ function openNoteViewModal(nodeId) {
 function closeNoteViewModal() {
     const modal = document.getElementById('noteViewModal');
     if (!modal) return;
-    if (_toastViewer) { _toastViewer.destroy(); _toastViewer = null; }
     modal.classList.add('hidden');
     if (document.getElementById('mapListModal').classList.contains('hidden') &&
         document.getElementById('configModal').classList.contains('hidden') &&

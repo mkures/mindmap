@@ -6,7 +6,6 @@
     <title>MindMap</title>
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <link rel="stylesheet" href="styles.css">
-    <link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css">
     <!-- Optionally expose a bearer token for the persistence API via meta or script injection -->
     <!-- <meta name="mindmap-api-token" content=""> -->
 </head>
@@ -165,13 +164,20 @@
         </div>
     </div>
     <!-- Note Modal -->
-    <div id="noteModal" class="modal hidden" style="max-width:780px;width:95vw;">
+    <div id="noteModal" class="modal hidden" style="max-width:720px;width:95vw;">
         <div class="modal-content">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
                 <h2 id="noteModalTitle" style="margin:0;font-size:16px;"></h2>
                 <button id="noteCloseBtn" class="secondary" style="padding:4px 10px;font-size:13px;">✕</button>
             </div>
-            <div id="noteEditorContainer"></div>
+            <div class="note-editor-tabs">
+                <button class="note-tab active" data-tab="write">Écrire</button>
+                <button class="note-tab" data-tab="preview">Aperçu</button>
+            </div>
+            <div id="noteWritePane">
+                <textarea id="noteModalBody" placeholder="Écrivez votre note en Markdown…"></textarea>
+            </div>
+            <div id="notePreviewPane" class="note-viewer-content hidden"></div>
             <div class="modal-actions" style="margin-top:12px;">
                 <button id="noteSaveBtn">Enregistrer</button>
             </div>
@@ -196,7 +202,6 @@
     </div>
     <!-- marked.js for Markdown rendering -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
-    <script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
-    <script type="module" src="src/main.js"></script>
+<script type="module" src="src/main.js"></script>
 </body>
 </html>

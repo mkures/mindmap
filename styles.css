@@ -476,10 +476,54 @@ body.dragging-node {
     color: #fff;
 }
 
-/* Reset Toast UI editor/toolbar buttons to override .modal button styles */
-#noteEditorContainer button {
-    all: revert;
+/* Note editor tabs */
+.note-editor-tabs {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0;
+}
+.note-tab {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 6px 16px;
+    border: none;
+    background: none;
+    color: var(--text-secondary);
     cursor: pointer;
+    border-radius: var(--radius) var(--radius) 0 0;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: color 0.15s, border-color 0.15s;
+}
+.note-tab:hover { color: var(--text); }
+.note-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    font-weight: 600;
+}
+#noteModalBody {
+    width: 100%;
+    min-height: 340px;
+    resize: vertical;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 13px;
+    line-height: 1.65;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px;
+    box-sizing: border-box;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    outline: none;
+    transition: border-color 0.15s;
+}
+#noteModalBody:focus { border-color: var(--accent); }
+#notePreviewPane { min-height: 340px; }
+
+/* Unused Toast UI reset (kept for safety)
 }
 
 /* ---- Drag Preview ---- */

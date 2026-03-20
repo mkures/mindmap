@@ -194,9 +194,6 @@ function wireUI() {
     if (addChildBtn) {
         addChildBtn.onclick = () => {
             if (!map) return;
-            // Only add children to tree nodes
-            const selNode = selectedId ? map.nodes[selectedId] : null;
-            if (selNode?.placement === 'free') return;
             const id = addChild(map, selectedId);
             selectedId = id;
             needsCenterOnRoot = false;
@@ -210,8 +207,6 @@ function wireUI() {
     if (addSiblingBtn) {
         addSiblingBtn.onclick = () => {
             if (!map) return;
-            const selNode = selectedId ? map.nodes[selectedId] : null;
-            if (selNode?.placement === 'free') return;
             const id = addSibling(map, selectedId);
             if (id) {
                 selectedId = id;

@@ -225,20 +225,74 @@ export function layout(map) {
         });
     }
 
-    // Position free nodes (bubbles) at their stored (fx, fy)
-    Object.values(map.nodes).forEach(n => {
-        if (n.placement !== 'free') return;
-        if (n.fx == null || n.fy == null) return;
-        n.x = n.fx;
-        n.y = n.fy;
-        const textWidth = (n.text || '').length * CHAR_WIDTH;
-        const contentWidth = Math.min(textWidth, MAX_NODE_W - PADDING);
-        n.w = Math.max(MIN_NODE_W, contentWidth + PADDING);
-        n._lines = wrapText(n.text, MAX_NODE_W - PADDING);
-        const textHeight = n._lines.length * LINE_HEIGHT + 10;
-        const mediaWidth = n.media ? n.media.width + 10 : 0;
-        const mediaHeight = n.media ? n.media.height + 10 : 0;
-        n.w = Math.max(MIN_NODE_W, contentWidth + PADDING + mediaWidth);
-        n.h = Math.max(NODE_H, textHeight, mediaHeight);
+    // Layout free nodes — each free root is a mini-tree anchored at (fx, fy)
+    Object.values(map.nodes).forEach(freeRoot => {
+        if (freeRoot.placement !== 'free') return;
+        if (freeRoot.fx == null || freeRoot.fy == null) return;
+
+        const fHeights = {};
+        const fVisited = new Set();
+
+        function measureFree(id) {
+            if (fVisited.has(id)) return 40;
+            fVisited.add(id);
+            const node = map.nodes[id];
+            if (!node) return 40;
+            const textWidth = (node.text || '').length * CHAR_WIDTH;
+            const mediaWidth = node.media ? node.media.width + 10 : 0;
+            const contentWidth = Math.min(textWidth, MAX_NODE_W - PADDING);
+            node.w = Math.max(MIN_NODE_W, contentWidth + PADDING + mediaWidth);
+            const wrapWidth = MAX_NODE_W - PADDING - mediaWidth;
+            node._lines = wrapText(node.text, wrapWidth);
+            const textHeight = node._lines.length * LINE_HEIGHT + 10;
+            const mediaHeight = node.media ? node.media.height + 10 : 0;
+            node.h = Math.max(NODE_H, textHeight, mediaHeight);
+            if (node.collapsed) { fHeights[id] = node.h; return node.h; }
+            const kids = (node.children || []).filter(c => map.nodes[c] && !fVisited.has(c));
+            if (!kids.length) { fHeights[id] = node.h; return node.h; }
+            let total = kids.reduce((s, c) => s + measureFree(c), 0) + V_GAP * (kids.length - 1);
+            fHeights[id] = Math.max(node.h, total);
+            return fHeights[id];
+        }
+
+        measureFree(freeRoot.id);
+
+        const fPlaced = new Set();
+
+        function placeFree(id, depth, centerY) {
+            if (fPlaced.has(id)) return;
+            fPlaced.add(id);
+            const node = map.nodes[id];
+            if (!node) return;
+            node.depth = depth;
+            node.direction = 'right';
+            const colorIndex = Math.min(depth, colors.length - 1);
+            node.color = colors[colorIndex] || colors[colors.length - 1] || '#ffffff';
+            if (depth === 0) {
+                node.x = 0;
+            } else {
+                const parent = map.nodes[node.parentId];
+                node.x = parent ? parent.x + parent.w + H_GAP : 0;
+            }
+            node.y = centerY - node.h / 2;
+            if (node.collapsed) return;
+            const kids = (node.children || []).filter(c => map.nodes[c] && fHeights[c] && !fPlaced.has(c));
+            if (!kids.length) return;
+            let total = kids.reduce((s, c) => s + (fHeights[c] || 40), 0) + V_GAP * (kids.length - 1);
+            let start = centerY - total / 2;
+            kids.forEach(c => {
+                const h = fHeights[c] || 40;
+                placeFree(c, depth + 1, start + h / 2);
+                start += h + V_GAP;
+            });
+        }
+
+        placeFree(freeRoot.id, 0, 0);
+
+        // Offset all placed nodes so the free root lands at (fx, fy)
+        fPlaced.forEach(id => {
+            const node = map.nodes[id];
+            if (node) { node.x += freeRoot.fx; node.y += freeRoot.fy; }
+        });
     });
 }

@@ -51,10 +51,10 @@ export function render(map, svg, selectedId) {
     }
     collectVisible(map.rootId);
 
-    // Include free nodes
+    // Include free nodes and their subtrees
     Object.values(map.nodes).forEach(n => {
         if (n.placement === 'free' && n.fx != null && n.fy != null) {
-            visibleNodeIds.add(n.id);
+            collectVisible(n.id);
         }
     });
 

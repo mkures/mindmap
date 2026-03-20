@@ -567,37 +567,6 @@ function wireUI() {
     if (noteCloseBtn) noteCloseBtn.addEventListener('click', closeNoteModal);
     const noteSaveBtn = document.getElementById('noteSaveBtn');
     if (noteSaveBtn) noteSaveBtn.addEventListener('click', closeNoteModal);
-    // Tab switching in note editor
-    document.querySelectorAll('.note-tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-            document.querySelectorAll('.note-tab').forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-            const isPreview = tab.dataset.tab === 'preview';
-            document.getElementById('noteWritePane').classList.toggle('hidden', isPreview);
-            const previewPane = document.getElementById('notePreviewPane');
-            previewPane.classList.toggle('hidden', !isPreview);
-            if (isPreview) {
-                const body = document.getElementById('noteModalBody').value;
-                previewPane.innerHTML = typeof marked !== 'undefined'
-                    ? marked.parse(body, { breaks: true, gfm: true })
-                    : `<pre>${body}</pre>`;
-            }
-        });
-    });
-    // Escape closes note modal
-    document.getElementById('noteModalBody')?.addEventListener('keydown', e => {
-        if (e.key === 'Escape') { e.preventDefault(); closeNoteModal(); }
-        e.stopPropagation();
-    });
-
-    // Note toolbar actions
-    document.getElementById('noteToolbar')?.addEventListener('click', e => {
-        const btn = e.target.closest('.ntb[data-action]');
-        if (!btn) return;
-        const ta = document.getElementById('noteModalBody');
-        if (!ta) return;
-        insertMd(ta, btn.dataset.action);
-    });
 
     // Lightbox
     const lightboxModal = document.getElementById('lightboxModal');
@@ -1445,53 +1414,7 @@ function showNodeContextMenu(x, y, nodeId) {
     }, 0);
 }
 
-function insertMd(ta, action) {
-    const start = ta.selectionStart;
-    const end = ta.selectionEnd;
-    const sel = ta.value.substring(start, end);
-    const lineStart = ta.value.lastIndexOf('\n', start - 1) + 1;
-
-    const wrap = (before, after, placeholder) => {
-        const text = sel || placeholder;
-        const result = before + text + after;
-        ta.value = ta.value.substring(0, start) + result + ta.value.substring(end);
-        ta.selectionStart = start + before.length;
-        ta.selectionEnd = start + before.length + text.length;
-        ta.focus();
-    };
-
-    const prefix = (marker, placeholder) => {
-        const before = ta.value.substring(0, lineStart);
-        const line = ta.value.substring(lineStart, end) || placeholder;
-        ta.value = before + marker + line + ta.value.substring(end);
-        ta.selectionStart = lineStart + marker.length;
-        ta.selectionEnd = lineStart + marker.length + line.length;
-        ta.focus();
-    };
-
-    switch (action) {
-        case 'bold':       wrap('**', '**', 'texte'); break;
-        case 'italic':     wrap('*', '*', 'texte'); break;
-        case 'strike':     wrap('~~', '~~', 'texte'); break;
-        case 'h1':         prefix('# ', 'Titre'); break;
-        case 'h2':         prefix('## ', 'Titre'); break;
-        case 'h3':         prefix('### ', 'Titre'); break;
-        case 'ul':         prefix('- ', 'élément'); break;
-        case 'ol':         prefix('1. ', 'élément'); break;
-        case 'task':       prefix('- [ ] ', 'tâche'); break;
-        case 'quote':      prefix('> ', 'citation'); break;
-        case 'code':       wrap('`', '`', 'code'); break;
-        case 'codeblock':  wrap('```\n', '\n```', 'code'); break;
-        case 'link':       wrap('[', '](https://)', sel || 'texte'); break;
-        case 'hr': {
-            const ins = '\n---\n';
-            ta.value = ta.value.substring(0, end) + ins + ta.value.substring(end);
-            ta.selectionStart = ta.selectionEnd = end + ins.length;
-            ta.focus();
-            break;
-        }
-    }
-}
+let _noteEditor = null;
 
 function openNoteModal(nodeId) {
     if (!map) return;
@@ -1499,32 +1422,69 @@ function openNoteModal(nodeId) {
     if (!node) return;
     const modal = document.getElementById('noteModal');
     const titleEl = document.getElementById('noteModalTitle');
-    const textarea = document.getElementById('noteModalBody');
-    if (!modal || !titleEl || !textarea) return;
+    const container = document.getElementById('noteEditorContainer');
+    if (!modal || !titleEl || !container) return;
+
     titleEl.textContent = node.text || 'Sans titre';
-    textarea.value = node.body || '';
     modal.dataset.nodeId = nodeId;
-    // Reset to write tab
-    modal.querySelectorAll('.note-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'write'));
-    document.getElementById('noteWritePane').classList.remove('hidden');
-    document.getElementById('notePreviewPane').classList.add('hidden');
     modal.classList.remove('hidden');
     modalBackdrop.classList.remove('hidden');
-    textarea.focus();
+
+    // Destroy previous instance if any
+    if (_noteEditor) {
+        _noteEditor.destroy();
+        _noteEditor = null;
+    }
+    container.innerHTML = '';
+
+    if (window.toastui && window.toastui.Editor) {
+        _noteEditor = new window.toastui.Editor({
+            el: container,
+            height: '380px',
+            initialEditType: 'markdown',
+            previewStyle: 'tab',
+            initialValue: node.body || '',
+            toolbarItems: [
+                ['heading', 'bold', 'italic', 'strike'],
+                ['hr', 'quote'],
+                ['ul', 'ol', 'task'],
+                ['table', 'link'],
+                ['code', 'codeblock'],
+            ],
+        });
+    } else {
+        // Fallback: plain textarea
+        container.innerHTML = '';
+        const ta = document.createElement('textarea');
+        ta.id = 'noteModalBody';
+        ta.value = node.body || '';
+        ta.placeholder = 'Écrivez votre note en Markdown…';
+        ta.style.cssText = 'width:100%;min-height:380px;resize:vertical;font-family:monospace;font-size:13px;line-height:1.6;border:1px solid var(--border);border-radius:var(--radius);padding:12px;box-sizing:border-box;';
+        container.appendChild(ta);
+    }
 }
 
 function closeNoteModal() {
     const modal = document.getElementById('noteModal');
     if (!modal || modal.classList.contains('hidden')) return;
     const nodeId = modal.dataset.nodeId;
-    const textarea = document.getElementById('noteModalBody');
-    if (nodeId && map && map.nodes[nodeId] && textarea) {
-        const newBody = textarea.value;
+    if (nodeId && map && map.nodes[nodeId]) {
+        let newBody = '';
+        if (_noteEditor) {
+            newBody = _noteEditor.getMarkdown();
+        } else {
+            const ta = document.getElementById('noteModalBody');
+            newBody = ta ? ta.value : '';
+        }
         if (newBody !== (map.nodes[nodeId].body || '')) {
             map.nodes[nodeId].body = newBody;
             update();
             markMapChanged();
         }
+    }
+    if (_noteEditor) {
+        _noteEditor.destroy();
+        _noteEditor = null;
     }
     modal.classList.add('hidden');
     const noteViewModal = document.getElementById('noteViewModal');

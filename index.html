@@ -6,6 +6,7 @@
     <title>MindMap</title>
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css">
     <!-- Optionally expose a bearer token for the persistence API via meta or script injection -->
     <!-- <meta name="mindmap-api-token" content=""> -->
 </head>
@@ -164,39 +165,13 @@
         </div>
     </div>
     <!-- Note Modal -->
-    <div id="noteModal" class="modal hidden" style="max-width:720px;width:95vw;">
+    <div id="noteModal" class="modal hidden" style="max-width:780px;width:95vw;">
         <div class="modal-content">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
                 <h2 id="noteModalTitle" style="margin:0;font-size:16px;"></h2>
-                <button id="noteCloseBtn" class="secondary" style="padding:4px 10px;font-size:13px;">✕</button>
+                <button id="noteCloseBtn" class="btn-icon">✕</button>
             </div>
-            <div class="note-editor-tabs">
-                <button class="note-tab active" data-tab="write">Écrire</button>
-                <button class="note-tab" data-tab="preview">Aperçu</button>
-            </div>
-            <div id="noteWritePane">
-                <div class="note-toolbar" id="noteToolbar">
-                    <button class="ntb" data-action="bold" title="Gras"><svg viewBox="0 0 24 24" width="14" height="14"><path d="M6 4h8a4 4 0 0 1 0 8H6z" fill="currentColor"/><path d="M6 12h9a4 4 0 0 1 0 8H6z" fill="currentColor"/></svg></button>
-                    <button class="ntb" data-action="italic" title="Italique"><svg viewBox="0 0 24 24" width="14" height="14"><line x1="19" y1="4" x2="10" y2="4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="14" y1="20" x2="5" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="15" y1="4" x2="9" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
-                    <button class="ntb" data-action="strike" title="Barré"><svg viewBox="0 0 24 24" width="14" height="14"><line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M8 8c0-2.2 1.8-4 4-4s4 1.8 4 4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M8 16c0 2.2 1.8 4 4 4s4-1.8 4-4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg></button>
-                    <span class="ntb-sep"></span>
-                    <button class="ntb" data-action="h1" title="Titre 1"><b style="font-size:11px">H1</b></button>
-                    <button class="ntb" data-action="h2" title="Titre 2"><b style="font-size:11px">H2</b></button>
-                    <button class="ntb" data-action="h3" title="Titre 3"><b style="font-size:11px">H3</b></button>
-                    <span class="ntb-sep"></span>
-                    <button class="ntb" data-action="ul" title="Liste"><svg viewBox="0 0 24 24" width="14" height="14"><circle cx="4" cy="7" r="1.5" fill="currentColor"/><line x1="8" y1="7" x2="20" y2="7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="4" cy="12" r="1.5" fill="currentColor"/><line x1="8" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="4" cy="17" r="1.5" fill="currentColor"/><line x1="8" y1="17" x2="20" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
-                    <button class="ntb" data-action="ol" title="Liste numérotée"><svg viewBox="0 0 24 24" width="14" height="14"><text x="2" y="9" font-size="8" font-weight="bold" fill="currentColor">1.</text><line x1="9" y1="7" x2="20" y2="7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><text x="2" y="15" font-size="8" font-weight="bold" fill="currentColor">2.</text><line x1="9" y1="13" x2="20" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><text x="2" y="21" font-size="8" font-weight="bold" fill="currentColor">3.</text><line x1="9" y1="19" x2="20" y2="19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
-                    <button class="ntb" data-action="task" title="Case à cocher"><svg viewBox="0 0 24 24" width="14" height="14"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="2" fill="none"/><polyline points="7,12 10,15 17,8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-                    <span class="ntb-sep"></span>
-                    <button class="ntb" data-action="quote" title="Citation"><svg viewBox="0 0 24 24" width="14" height="14"><path d="M3 21c3 0 7-1 7-8V5c0-1.25-.75-2.2-1.85-2.5C7.1 2.2 5.5 2.5 5 4c-1.24.92-1.5 2.5-1.5 3.5 0 2.5 1.5 5 5 5.5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M13 21c3 0 7-1 7-8V5c0-1.25-.75-2.2-1.85-2.5C17.1 2.2 15.5 2.5 15 4c-1.24.92-1.5 2.5-1.5 3.5 0 2.5 1.5 5 5 5.5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg></button>
-                    <button class="ntb" data-action="code" title="Code inline"><svg viewBox="0 0 24 24" width="14" height="14"><polyline points="16,18 22,12 16,6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><polyline points="8,6 2,12 8,18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-                    <button class="ntb" data-action="codeblock" title="Bloc de code"><svg viewBox="0 0 24 24" width="14" height="14"><rect x="2" y="3" width="20" height="18" rx="3" stroke="currentColor" stroke-width="2" fill="none"/><polyline points="8,9 5,12 8,15" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><polyline points="16,9 19,12 16,15" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-                    <button class="ntb" data-action="link" title="Lien"><svg viewBox="0 0 24 24" width="14" height="14"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg></button>
-                    <button class="ntb" data-action="hr" title="Séparateur"><svg viewBox="0 0 24 24" width="14" height="14"><line x1="2" y1="12" x2="22" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
-                </div>
-                <textarea id="noteModalBody" placeholder="Écrivez votre note en Markdown…"></textarea>
-            </div>
-            <div id="notePreviewPane" class="note-viewer-content hidden"></div>
+            <div id="noteEditorContainer"></div>
             <div class="modal-actions" style="margin-top:12px;">
                 <button id="noteSaveBtn">Enregistrer</button>
             </div>
@@ -212,8 +187,8 @@
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
                 <h2 id="noteViewTitle" style="margin:0;font-size:16px;"></h2>
                 <div style="display:flex;gap:8px;">
-                    <button id="noteViewEditBtn" class="secondary">Modifier</button>
-                    <button id="noteViewCloseBtn" class="secondary" style="padding:4px 10px;font-size:13px;">✕</button>
+                    <button id="noteViewEditBtn" class="btn-icon">Modifier</button>
+                    <button id="noteViewCloseBtn" class="btn-icon">✕</button>
                 </div>
             </div>
             <div id="noteViewerContainer" class="note-viewer-content"></div>
@@ -221,6 +196,7 @@
     </div>
     <!-- marked.js for Markdown rendering -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
+    <script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
 <script type="module" src="src/main.js"></script>
 </body>
 </html>

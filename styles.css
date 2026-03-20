@@ -432,7 +432,7 @@ body.dragging-node {
 }
 
 /* ---- Buttons (shared) ---- */
-.modal button,
+.modal-actions button,
 .map-list-actions button {
     font-family: 'DM Sans', sans-serif;
     font-size: 13px;
@@ -446,125 +446,67 @@ body.dragging-node {
     transition: all var(--duration) var(--ease);
 }
 
-.modal button:hover,
+.modal-actions button:hover,
 .map-list-actions button:hover {
     background: var(--surface-hover);
     border-color: var(--accent);
     color: var(--accent-hover);
 }
 
-.modal button:active {
+.modal-actions button:active {
     transform: scale(0.97);
 }
 
-.modal button.secondary {
+.modal-actions button.secondary {
     background: var(--surface);
     color: var(--text-secondary);
 }
 
-.modal button[type="submit"],
-.modal button.primary {
+.modal-actions button[type="submit"],
+.modal-actions button.primary {
     background: var(--accent);
     border-color: var(--accent);
     color: #fff;
 }
 
-.modal button[type="submit"]:hover,
-.modal button.primary:hover {
+.modal-actions button[type="submit"]:hover,
+.modal-actions button.primary:hover {
     background: var(--accent-hover);
     border-color: var(--accent-hover);
     color: #fff;
 }
 
-/* Note toolbar */
-.note-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    padding: 4px 6px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-bottom: none;
-    border-radius: var(--radius) var(--radius) 0 0;
-    flex-wrap: wrap;
-}
-.ntb {
+/* Small icon/text buttons used in modal headers etc. */
+.btn-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 26px;
-    border: none;
-    background: none;
-    color: var(--text-secondary);
-    border-radius: 4px;
-    cursor: pointer;
-    padding: 0;
-    font-size: 12px;
-    transition: background 0.12s, color 0.12s;
-}
-.ntb:hover { background: var(--surface-hover); color: var(--text); }
-.ntb:active { background: var(--border); }
-.ntb-sep {
-    width: 1px;
-    height: 18px;
-    background: var(--border);
-    margin: 0 3px;
-    flex-shrink: 0;
-}
-#noteModalBody {
-    border-radius: 0 0 var(--radius) var(--radius) !important;
-    border-top: none !important;
-}
-
-/* Note editor tabs */
-.note-editor-tabs {
-    display: flex;
-    gap: 2px;
-    margin-bottom: 8px;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 0;
-}
-.note-tab {
+    padding: 4px 10px;
     font-family: 'DM Sans', sans-serif;
     font-size: 13px;
     font-weight: 500;
-    padding: 6px 16px;
-    border: none;
-    background: none;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
     color: var(--text-secondary);
     cursor: pointer;
-    border-radius: var(--radius) var(--radius) 0 0;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-    transition: color 0.15s, border-color 0.15s;
+    transition: all var(--duration) var(--ease);
 }
-.note-tab:hover { color: var(--text); }
-.note-tab.active {
+.btn-icon:hover {
+    background: var(--surface-hover);
+    border-color: var(--accent);
     color: var(--accent);
-    border-bottom-color: var(--accent);
-    font-weight: 600;
 }
-#noteModalBody {
-    width: 100%;
-    min-height: 340px;
-    resize: vertical;
-    font-family: 'SF Mono', 'Fira Code', monospace;
-    font-size: 13px;
-    line-height: 1.65;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 12px;
-    box-sizing: border-box;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    outline: none;
-    transition: border-color 0.15s;
-}
-#noteModalBody:focus { border-color: var(--accent); }
-#notePreviewPane { min-height: 340px; }
 
-/* Unused Toast UI reset (kept for safety)
+/* Toast UI — minimal visual integration */
+.toastui-editor-defaultUI {
+    font-family: 'DM Sans', -apple-system, sans-serif;
+}
+
+/* Toast UI editor container */
+#noteEditorContainer .toastui-editor-defaultUI {
+    border-radius: 0 0 var(--radius) var(--radius);
+    overflow: hidden;
 }
 
 /* ---- Drag Preview ---- */
@@ -1480,9 +1422,4 @@ body.dragging-node {
     border: 1px solid var(--border); padding: 4px 10px;
 }
 
-/* Toast UI editor inside modal */
-#noteEditorContainer .toastui-editor-defaultUI {
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    overflow: hidden;
-}
+

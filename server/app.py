@@ -15,6 +15,7 @@ print("=== Starting MindMap Server ===", flush=True)
 # Get the project root (parent of server/)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 app = Flask(__name__, static_folder=PROJECT_ROOT, static_url_path='')
+print("[STARTUP] app.py loaded - version 2026-03-20-v3-basic-auth-debug", flush=True)
 
 # Configuration
 DB_PATH = os.environ.get('DB_PATH', 'mindmap.db')
@@ -150,7 +151,12 @@ def requires_login(f):
     def decorated(*args, **kwargs):
         user = get_current_user()
         if not user and request.path.startswith('/api/'):
+            print(f"[AUTH] API route {request.path} - no session, trying Basic Auth", flush=True)
             user = _try_basic_auth()
+            if user:
+                print(f"[AUTH] Basic Auth success for {user['username']}", flush=True)
+            else:
+                print(f"[AUTH] Basic Auth failed", flush=True)
         if not user:
             if request.path.startswith('/api/'):
                 return jsonify({'error': 'Non authentifié'}), 401

@@ -580,9 +580,6 @@ function wireUI() {
     document.addEventListener('mindmap:image-click', e => {
         openLightbox(e.detail.dataUrl);
     });
-    document.addEventListener('mindmap:note-view', e => {
-        openNoteViewModal(e.detail.nodeId);
-    });
 
     const addTagDefBtn = document.getElementById('addTagDefBtn');
     if (addTagDefBtn) {
@@ -1352,10 +1349,22 @@ function showNodeContextMenu(x, y, nodeId) {
     menu.className = 'context-menu node-context-menu';
 
     // Note section
-    const noteBtn = document.createElement('button');
-    noteBtn.innerHTML = `✎ ${node.body ? 'Modifier la note' : 'Ajouter une note'}`;
-    noteBtn.onclick = () => { menu.remove(); openNoteModal(nodeId); };
-    menu.appendChild(noteBtn);
+    if (node.body) {
+        const viewNoteBtn = document.createElement('button');
+        viewNoteBtn.innerHTML = '✎ Voir la note';
+        viewNoteBtn.onclick = () => { menu.remove(); openNoteViewModal(nodeId); };
+        menu.appendChild(viewNoteBtn);
+
+        const editNoteBtn = document.createElement('button');
+        editNoteBtn.innerHTML = '✏ Modifier la note';
+        editNoteBtn.onclick = () => { menu.remove(); openNoteModal(nodeId); };
+        menu.appendChild(editNoteBtn);
+    } else {
+        const noteBtn = document.createElement('button');
+        noteBtn.innerHTML = '✎ Ajouter une note';
+        noteBtn.onclick = () => { menu.remove(); openNoteModal(nodeId); };
+        menu.appendChild(noteBtn);
+    }
 
     // Image section
     const imgBtn = document.createElement('button');

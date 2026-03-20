@@ -476,6 +476,12 @@ body.dragging-node {
     color: #fff;
 }
 
+/* Reset Toast UI editor/toolbar buttons to override .modal button styles */
+#noteEditorContainer button {
+    all: revert;
+    cursor: pointer;
+}
+
 /* ---- Drag Preview ---- */
 .drag-preview {
     position: fixed;

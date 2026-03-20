@@ -251,17 +251,7 @@ function updateBubbleElement(g, node, settings, isSelected) {
         noteIcon.setAttribute('x', node.w - 4);
         noteIcon.setAttribute('y', 3);
         noteIcon.setAttribute('fill', '#6366f1');
-        noteIcon.setAttribute('pointer-events', 'all');
-        noteIcon.style.cursor = 'pointer';
-        if (!noteIcon._hasClickListener) {
-            noteIcon._hasClickListener = true;
-            noteIcon.addEventListener('click', e => {
-                e.stopPropagation();
-                document.dispatchEvent(new CustomEvent('mindmap:note-view', {
-                    detail: { nodeId: g.dataset.id }
-                }));
-            });
-        }
+        noteIcon.setAttribute('pointer-events', 'none');
     } else if (noteIcon) {
         noteIcon.remove();
     }

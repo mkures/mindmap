@@ -145,12 +145,13 @@ def get_current_user():
 
 
 def requires_login(f):
-    """Decorator requiring session-based login."""
+    """Decorator requiring session-based login (with Basic Auth fallback for API routes)."""
     @wraps(f)
     def decorated(*args, **kwargs):
         user = get_current_user()
+        if not user and request.path.startswith('/api/'):
+            user = _try_basic_auth()
         if not user:
-            # API calls get 401, page requests get redirected
             if request.path.startswith('/api/'):
                 return jsonify({'error': 'Non authentifié'}), 401
             return redirect('/login')

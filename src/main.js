@@ -302,6 +302,7 @@ function wireUI() {
                     setNodeImage(map, selectedId, {
                         kind: 'image',
                         dataUrl,
+                        originalDataUrl: ev.target.result,
                         width: w,
                         height: h,
                         naturalWidth: img.width,

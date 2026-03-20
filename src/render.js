@@ -211,7 +211,7 @@ function updateBubbleElement(g, node, settings, isSelected) {
             img.addEventListener('click', e => {
                 e.stopPropagation();
                 document.dispatchEvent(new CustomEvent('mindmap:image-click', {
-                    detail: { dataUrl: node.media.dataUrl }
+                    detail: { dataUrl: node.media.originalDataUrl || node.media.dataUrl }
                 }));
             });
         }

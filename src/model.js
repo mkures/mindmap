@@ -10,7 +10,8 @@ export function ensureSettings(map) {
             levelColors: [...DEFAULT_LEVEL_COLORS],
             fontFamily: DEFAULT_FONT_FAMILY,
             fontSize: DEFAULT_FONT_SIZE,
-            autosaveDelay: DEFAULT_AUTOSAVE_DELAY
+            autosaveDelay: DEFAULT_AUTOSAVE_DELAY,
+            tags: []
         };
     } else {
         if (!Array.isArray(map.settings.levelColors) || !map.settings.levelColors.length) {
@@ -27,6 +28,9 @@ export function ensureSettings(map) {
         map.settings.autosaveDelay = Number.isFinite(parsedAutosaveDelay) && parsedAutosaveDelay >= MIN_AUTOSAVE_DELAY
             ? parsedAutosaveDelay
             : DEFAULT_AUTOSAVE_DELAY;
+        if (!Array.isArray(map.settings.tags)) {
+            map.settings.tags = [];
+        }
     }
     return map;
 }
@@ -85,13 +89,32 @@ export function addSibling(map, nodeId) {
 export function deleteNode(map, nodeId) {
     const node = map.nodes[nodeId];
     if (!node || nodeId === map.rootId) return;
-    const parent = map.nodes[node.parentId];
-    parent.children = parent.children.filter(id => id !== nodeId);
-    function removeSubtree(id) {
-        map.nodes[id].children.forEach(removeSubtree);
-        delete map.nodes[id];
+
+    // Collect all IDs to be deleted (node + subtree)
+    const deletedIds = new Set();
+    function collectIds(id) {
+        if (!map.nodes[id]) return;
+        deletedIds.add(id);
+        (map.nodes[id].children || []).forEach(collectIds);
     }
-    removeSubtree(nodeId);
+    collectIds(nodeId);
+
+    // Remove from parent's children list (only for tree nodes with a real parent)
+    if (node.parentId) {
+        const parent = map.nodes[node.parentId];
+        if (parent) {
+            parent.children = parent.children.filter(id => id !== nodeId);
+        }
+    }
+
+    // Delete all nodes in subtree
+    deletedIds.forEach(id => delete map.nodes[id]);
+
+    // Clean up free links referencing any deleted node
+    if (map.links) {
+        map.links = map.links.filter(l => !deletedIds.has(l.from) && !deletedIds.has(l.to));
+    }
+
     map.updatedAt = Date.now();
 }
 
@@ -237,4 +260,100 @@ export function toggleCollapse(map, nodeId) {
     node.collapsed = !node.collapsed;
     map.updatedAt = Date.now();
     return true;
+}
+
+// Create a free bubble at absolute SVG coordinates
+export function addFreeBubble(map, fx, fy) {
+    const id = generateNodeId(map);
+    map.nodes[id] = {
+        id, parentId: null, text: 'Note', children: [],
+        nodeType: 'bubble', placement: 'free',
+        fx, fy, color: '#fef3c7'
+    };
+    map.updatedAt = Date.now();
+    return id;
+}
+
+// Create a card (markdown note) at absolute SVG coordinates
+export function addCard(map, fx, fy) {
+    const id = generateNodeId(map);
+    map.nodes[id] = {
+        id, parentId: null, text: 'Sans titre', children: [],
+        nodeType: 'card', placement: 'free',
+        fx, fy, color: '#ffffff',
+        body: '', cardWidth: 280, cardExpanded: false
+    };
+    map.updatedAt = Date.now();
+    return id;
+}
+
+// Convert a free bubble into a card
+export function convertToCard(map, nodeId) {
+    const node = map.nodes[nodeId];
+    if (!node || node.placement !== 'free') return false;
+    node.nodeType = 'card';
+    node.body = node.body || '';
+    node.cardWidth = node.cardWidth || 280;
+    node.cardExpanded = false;
+    if (node.fx == null) { node.fx = node.x || 0; node.fy = node.y || 0; }
+    map.updatedAt = Date.now();
+    return true;
+}
+
+// Toggle card expanded/collapsed state
+export function toggleCardExpanded(map, nodeId) {
+    const node = map.nodes[nodeId];
+    if (!node || node.nodeType !== 'card') return false;
+    node.cardExpanded = !node.cardExpanded;
+    map.updatedAt = Date.now();
+    return true;
+}
+
+// Add a free link between any two nodes
+export function addLink(map, fromId, toId, label = '') {
+    if (!map.links) map.links = [];
+    if (!map.nodes[fromId] || !map.nodes[toId]) return null;
+    if (fromId === toId) return null;
+    // Avoid duplicate
+    if (map.links.some(l => l.from === fromId && l.to === toId)) return null;
+    const id = 'l' + Date.now();
+    const link = { id, from: fromId, to: toId, label, color: '#94a3b8', style: 'dashed' };
+    map.links.push(link);
+    map.updatedAt = Date.now();
+    return link;
+}
+
+// Delete a free link by ID
+export function deleteLink(map, linkId) {
+    if (!map.links) return;
+    map.links = map.links.filter(l => l.id !== linkId);
+    map.updatedAt = Date.now();
+}
+
+// Tag definitions (in settings.tags)
+export function addTagDef(map, name, color) {
+    ensureSettings(map);
+    const id = 'tag-' + Date.now();
+    map.settings.tags.push({ id, name, color: color || '#94a3b8' });
+    map.updatedAt = Date.now();
+    return id;
+}
+
+export function removeTagDef(map, tagId) {
+    ensureSettings(map);
+    map.settings.tags = map.settings.tags.filter(t => t.id !== tagId);
+    Object.values(map.nodes).forEach(n => {
+        if (n.tags) n.tags = n.tags.filter(id => id !== tagId);
+    });
+    map.updatedAt = Date.now();
+}
+
+export function toggleNodeTag(map, nodeId, tagId) {
+    const node = map.nodes[nodeId];
+    if (!node) return;
+    if (!node.tags) node.tags = [];
+    const idx = node.tags.indexOf(tagId);
+    if (idx >= 0) node.tags.splice(idx, 1);
+    else node.tags.push(tagId);
+    map.updatedAt = Date.now();
 }

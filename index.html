@@ -34,9 +34,12 @@
             <button id="exportPdfBtn">PDF</button>
             <button id="exportImageBtn">PNG</button>
             <button id="exportMdBtn">MD</button>
+            <button id="shareBtn">Partager</button>
             <span class="tb-sep"></span>
             <button id="configBtn">Config</button>
             <button id="helpBtn">Aide</button>
+            <span class="tb-sep"></span>
+            <button id="outlineBtn">Plan</button>
             <button id="remoteSaveBtn" class="hidden">Sauvegarder</button>
             <input type="file" id="imageInput" accept="image/*" style="display:none">
             <input type="file" id="loadInput" accept="application/json" style="display:none">
@@ -44,6 +47,9 @@
         <svg id="mindmap" width="100%" height="100%">
             <g id="viewport"></g>
         </svg>
+        <div id="outlineView" class="hidden">
+            <div id="outlineContent"></div>
+        </div>
     </div>
     <div id="modalBackdrop" class="modal-backdrop hidden"></div>
     <div id="configModal" class="modal hidden">
@@ -66,6 +72,15 @@
                     <legend>Sauvegarde automatique</legend>
                     <label for="autosaveDelayInput">Intervalle de sauvegarde (ms)</label>
                     <input type="number" id="autosaveDelayInput" min="200" step="100">
+                </fieldset>
+                <fieldset>
+                    <legend>Etiquettes (tags)</legend>
+                    <div id="tagDefsContainer" class="tag-defs"></div>
+                    <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
+                        <input type="text" id="newTagNameInput" placeholder="Nom du tag" style="flex:1">
+                        <input type="color" id="newTagColorInput" value="#94a3b8" style="width:36px;height:28px;padding:2px;border:1.5px solid var(--border);border-radius:6px;cursor:pointer;">
+                        <button type="button" id="addTagDefBtn" class="secondary">Ajouter</button>
+                    </div>
                 </fieldset>
                 <div class="modal-actions">
                     <button type="button" id="configCancelBtn" class="secondary">Annuler</button>
@@ -119,6 +134,16 @@
                     </dl>
                 </div>
                 <div class="help-section">
+                    <h3>Tableau (board)</h3>
+                    <dl class="help-shortcuts">
+                        <dt>Double-clic (fond vide)</dt><dd>Créer une bulle libre</dd>
+                        <dt>N</dt><dd>Créer une card markdown</dd>
+                        <dt>M (sur bulle libre)</dt><dd>Convertir en card</dd>
+                        <dt>Shift + glisser (noeud)</dt><dd>Tracer un lien libre</dd>
+                        <dt>Clic sur lien + Suppr</dt><dd>Supprimer le lien</dd>
+                    </dl>
+                </div>
+                <div class="help-section">
                     <h3>Export</h3>
                     <dl class="help-shortcuts">
                         <dt>JSON</dt><dd>Sauvegarder en fichier local</dd>
@@ -132,6 +157,8 @@
             </div>
         </div>
     </div>
+    <!-- marked.js for Markdown rendering in cards -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
     <script type="module" src="src/main.js"></script>
 </body>
 </html>

@@ -86,6 +86,7 @@ def init_db():
             ('maps', 'trashed', 'ALTER TABLE maps ADD COLUMN trashed INTEGER DEFAULT 0'),
             ('maps', 'user_id', 'ALTER TABLE maps ADD COLUMN user_id TEXT'),
             ('folders', 'user_id', 'ALTER TABLE folders ADD COLUMN user_id TEXT'),
+            ('maps', 'share_token', 'ALTER TABLE maps ADD COLUMN share_token TEXT'),
         ]
         for table, col, sql in migrations:
             try:
@@ -273,6 +274,62 @@ def backup_db():
         as_attachment=True,
         download_name=f'mindmap-backup-{timestamp}.db'
     )
+
+
+@app.route('/api/admin/backup', methods=['POST'])
+@requires_admin
+def backup_to_r2():
+    """Upload SQLite backup to Cloudflare R2."""
+    import shutil
+    import tempfile
+    try:
+        import boto3
+        from botocore.config import Config
+    except ImportError:
+        return jsonify({'error': 'boto3 non installé'}), 500
+
+    r2_endpoint = os.environ.get('R2_ENDPOINT_URL')
+    r2_access_key = os.environ.get('R2_ACCESS_KEY_ID')
+    r2_secret_key = os.environ.get('R2_SECRET_ACCESS_KEY')
+    r2_bucket = os.environ.get('R2_BUCKET_NAME', 'mindmap-backups')
+    r2_key = os.environ.get('R2_BACKUP_KEY', 'mindmap.db')
+
+    if not r2_endpoint or not r2_access_key or not r2_secret_key:
+        return jsonify({'error': 'Variables R2 manquantes (R2_ENDPOINT_URL, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY)'}), 400
+
+    try:
+        db_path = os.path.abspath(DB_PATH)
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
+        tmp.close()
+
+        # Atomic copy using SQLite backup API (VACUUM INTO if available, else shutil.copy)
+        try:
+            src_conn = sqlite3.connect(db_path)
+            dst_conn = sqlite3.connect(tmp.name)
+            src_conn.backup(dst_conn)
+            src_conn.close()
+            dst_conn.close()
+        except Exception:
+            import shutil
+            shutil.copy2(db_path, tmp.name)
+
+        # Upload to R2
+        s3 = boto3.client(
+            's3',
+            endpoint_url=r2_endpoint,
+            aws_access_key_id=r2_access_key,
+            aws_secret_access_key=r2_secret_key,
+            config=Config(signature_version='s3v4'),
+            region_name='auto'
+        )
+        timestamp = time.strftime('%Y%m%d-%H%M%S')
+        key = r2_key.replace('.db', f'-{timestamp}.db') if '.' in r2_key else f'{r2_key}-{timestamp}'
+        s3.upload_file(tmp.name, r2_bucket, key)
+        os.unlink(tmp.name)
+        return jsonify({'success': True, 'key': key, 'bucket': r2_bucket})
+    except Exception as e:
+        print(f'[R2 BACKUP] Error: {e}', flush=True)
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/admin/users', methods=['GET'])
@@ -650,6 +707,69 @@ def delete_folder(folder_id):
 
 
 # =============================================================================
+# SHARE ROUTES
+# =============================================================================
+
+@app.route('/api/maps/<map_id>/share', methods=['POST'])
+@requires_login
+def share_map(map_id):
+    """Generate or get a share token for a map."""
+    user = request.current_user
+    conn = get_db()
+    row = conn.execute('SELECT user_id, share_token FROM maps WHERE id = ?', (map_id,)).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({'error': 'Carte introuvable'}), 404
+    if row['user_id'] != user['id'] and not user.get('is_admin'):
+        conn.close()
+        return jsonify({'error': 'Accès refusé'}), 403
+    token = row['share_token']
+    if not token:
+        token = secrets.token_urlsafe(20)
+        conn.execute('UPDATE maps SET share_token = ? WHERE id = ?', (token, map_id))
+        conn.commit()
+    conn.close()
+    return jsonify({'token': token})
+
+
+@app.route('/api/maps/<map_id>/share', methods=['DELETE'])
+@requires_login
+def unshare_map(map_id):
+    """Remove share token (revoke sharing)."""
+    user = request.current_user
+    conn = get_db()
+    row = conn.execute('SELECT user_id FROM maps WHERE id = ?', (map_id,)).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({'error': 'Carte introuvable'}), 404
+    if row['user_id'] != user['id'] and not user.get('is_admin'):
+        conn.close()
+        return jsonify({'error': 'Accès refusé'}), 403
+    conn.execute('UPDATE maps SET share_token = NULL WHERE id = ?', (map_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+
+@app.route('/api/shared/<token>', methods=['GET'])
+def get_shared_map(token):
+    """Get a shared map by token (no auth required)."""
+    conn = get_db()
+    row = conn.execute('SELECT data, title FROM maps WHERE share_token = ? AND (trashed IS NULL OR trashed = 0)', (token,)).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({'error': 'Carte introuvable ou partage désactivé'}), 404
+    map_data = json.loads(row['data'])
+    return jsonify({'map': map_data, 'title': row['title']})
+
+
+@app.route('/s/<token>')
+def shared_view(token):
+    """Serve shared map viewer page."""
+    return send_from_directory(app.static_folder, 'shared.html')
+
+
+# =============================================================================
 # STATIC FILE ROUTES (catch-all, must be AFTER API routes)
 # =============================================================================
 
@@ -667,7 +787,7 @@ def static_files(path):
     if path.startswith('api/'):
         return jsonify({'error': 'Not found'}), 404
     # Login page and its assets are public
-    if path in ('login.html', 'admin.html'):
+    if path in ('login.html', 'admin.html', 'shared.html'):
         return send_from_directory(app.static_folder, path)
     # Static assets (CSS, JS, fonts) are always accessible
     if path.startswith('src/') or path.endswith('.css') or path.endswith('.js') or path.endswith('.ico'):

@@ -27,6 +27,13 @@
                 </div>
                 <button id="backupBtn" class="admin-btn-primary">Telecharger</button>
             </div>
+            <div class="admin-list-item" style="justify-content:space-between;margin-top:8px;">
+                <div class="admin-user-info">
+                    <span class="admin-user-name">Cloudflare R2</span>
+                    <span class="admin-user-meta">Sauvegarde chiffree vers le bucket R2 configure</span>
+                </div>
+                <button id="r2BackupBtn" class="admin-btn-primary">Sauvegarder vers R2</button>
+            </div>
         </div>
 
         <div class="admin-section">
@@ -275,6 +282,28 @@
 
         document.getElementById('backupBtn').addEventListener('click', () => {
             window.location.href = '/api/admin/backup';
+        });
+
+        document.getElementById('r2BackupBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('r2BackupBtn');
+            btn.disabled = true;
+            btn.textContent = 'En cours…';
+            try {
+                const resp = await fetch('/api/admin/backup', { method: 'POST' });
+                const data = await resp.json();
+                if (resp.ok) {
+                    btn.textContent = 'Sauvegardé !';
+                    setTimeout(() => { btn.disabled = false; btn.textContent = 'Sauvegarder vers R2'; }, 3000);
+                } else {
+                    alert('Erreur : ' + (data.error || 'Inconnue'));
+                    btn.disabled = false;
+                    btn.textContent = 'Sauvegarder vers R2';
+                }
+            } catch {
+                alert('Erreur réseau');
+                btn.disabled = false;
+                btn.textContent = 'Sauvegarder vers R2';
+            }
         });
 
         addUserBtn.addEventListener('click', openAddUser);

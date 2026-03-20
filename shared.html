@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MindMap partagée</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        #sharedHeader {
+            padding: 8px 16px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        #sharedTitle {
+            font-weight: 700;
+            font-size: 15px;
+            color: var(--text);
+        }
+        #sharedBadge {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-tertiary);
+            background: var(--surface-hover);
+            padding: 3px 10px;
+            border-radius: 20px;
+        }
+        #sharedFit {
+            font-family: 'DM Sans', sans-serif;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 6px 14px;
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--surface-raised);
+            color: var(--text-secondary);
+            cursor: pointer;
+        }
+        #sharedContainer {
+            position: relative;
+            width: 100%;
+            height: calc(100vh - 45px);
+            overflow: hidden;
+            background: var(--canvas);
+        }
+        #sharedSvg {
+            width: 100%;
+            height: 100%;
+        }
+        #sharedError {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            font-family: 'DM Sans', sans-serif;
+            color: var(--text-secondary);
+            font-size: 16px;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
+</head>
+<body>
+    <div id="sharedHeader" class="hidden">
+        <span id="sharedTitle">MindMap</span>
+        <span id="sharedBadge">Vue partagée (lecture seule)</span>
+        <button id="sharedFit">Centrer</button>
+    </div>
+    <div id="sharedContainer" class="hidden">
+        <svg id="sharedSvg">
+            <g id="sharedViewport"></g>
+        </svg>
+    </div>
+    <div id="sharedError" class="hidden">Carte introuvable ou lien expiré.</div>
+    <script type="module">
+        import { layout } from './src/layout.js';
+        import { render } from './src/render.js';
+
+        const token = location.pathname.split('/s/')[1];
+        if (!token) {
+            showError();
+        } else {
+            loadShared(token);
+        }
+
+        async function loadShared(token) {
+            try {
+                const resp = await fetch(`/api/shared/${token}`);
+                if (!resp.ok) { showError(); return; }
+                const data = await resp.json();
+                const map = data.map;
+                if (!map || !map.nodes) { showError(); return; }
+                document.title = (data.title || 'MindMap') + ' – Vue partagée';
+                document.getElementById('sharedTitle').textContent = data.title || 'MindMap';
+                document.getElementById('sharedHeader').classList.remove('hidden');
+                document.getElementById('sharedContainer').classList.remove('hidden');
+
+                const svg = document.getElementById('sharedSvg');
+                const viewport = document.getElementById('sharedViewport');
+                let pan = { x: 0, y: 0, scale: 1 };
+
+                layout(map);
+                render(map, viewport, null);
+
+                // Center view
+                function fit() {
+                    const bbox = viewport.getBBox();
+                    const w = svg.clientWidth;
+                    const h = svg.clientHeight;
+                    if (!bbox.width || !bbox.height) return;
+                    const scale = Math.min(1, w / (bbox.width + 80), h / (bbox.height + 80));
+                    pan.scale = scale;
+                    pan.x = -bbox.x * scale + (w - bbox.width * scale) / 2;
+                    pan.y = -bbox.y * scale + (h - bbox.height * scale) / 2;
+                    viewport.setAttribute('transform', `translate(${pan.x},${pan.y}) scale(${pan.scale})`);
+                }
+
+                requestAnimationFrame(fit);
+                document.getElementById('sharedFit').onclick = fit;
+
+                // Pan & zoom (readonly)
+                let isPanning = false, panStart = { x: 0, y: 0 };
+                svg.addEventListener('mousedown', e => {
+                    if (e.button !== 0) return;
+                    isPanning = true;
+                    panStart = { x: e.clientX - pan.x, y: e.clientY - pan.y };
+                });
+                document.addEventListener('mousemove', e => {
+                    if (!isPanning) return;
+                    pan.x = e.clientX - panStart.x;
+                    pan.y = e.clientY - panStart.y;
+                    viewport.setAttribute('transform', `translate(${pan.x},${pan.y}) scale(${pan.scale})`);
+                });
+                document.addEventListener('mouseup', () => { isPanning = false; });
+                svg.addEventListener('wheel', e => {
+                    e.preventDefault();
+                    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+                    pan.scale = Math.min(5, Math.max(0.05, pan.scale + delta));
+                    viewport.setAttribute('transform', `translate(${pan.x},${pan.y}) scale(${pan.scale})`);
+                }, { passive: false });
+
+            } catch (err) {
+                console.error(err);
+                showError();
+            }
+        }
+
+        function showError() {
+            document.getElementById('sharedError').classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>

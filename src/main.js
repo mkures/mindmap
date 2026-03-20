@@ -13,11 +13,21 @@ import {
     copySubtree,
     pasteSubtree,
     toggleCollapse,
-    setNodeSide
+    setNodeSide,
+    addFreeBubble,
+    addCard,
+    convertToCard,
+    toggleCardExpanded,
+    addLink,
+    deleteLink,
+    addTagDef,
+    removeTagDef,
+    toggleNodeTag
 } from './model.js';
 import { layout } from './layout.js';
-import { render, clearRenderCache } from './render.js';
+import { render, clearRenderCache, setSelectedLinkId } from './render.js';
 import { exportMarkdown, exportImage, exportPdf } from './export.js';
+import { initOutline, renderOutline } from './outline.js';
 
 const MAPS_ENDPOINT = '/api/maps';
 let LAST_MAP_STORAGE_KEY = 'mindmap:lastMapId';
@@ -64,6 +74,10 @@ const breadcrumbEl = document.getElementById('breadcrumb');
 const currentUserDisplay = document.getElementById('currentUserDisplay');
 const adminBtn = document.getElementById('adminBtn');
 const logoutBtn = document.getElementById('logoutBtn');
+const shareBtn = document.getElementById('shareBtn');
+const outlineBtn = document.getElementById('outlineBtn');
+const outlineView = document.getElementById('outlineView');
+const outlineContent = document.getElementById('outlineContent');
 
 let currentUser = null;
 
@@ -90,11 +104,14 @@ let autosaveInFlight = false;
 let lastSaveError = null;
 
 let clipboard = null; // Stores copied subtree
+let selectedLinkId = null; // Currently selected free link
+let linkPreviewEl = null; // Temporary SVG line during link creation
 
 let currentFolderId = null; // null = root
 let currentFolderName = null;
 let allFolders = [];
 let viewingTrash = false;
+let outlineMode = false;
 
 init();
 
@@ -178,6 +195,9 @@ function wireUI() {
     if (addChildBtn) {
         addChildBtn.onclick = () => {
             if (!map) return;
+            // Only add children to tree nodes
+            const selNode = selectedId ? map.nodes[selectedId] : null;
+            if (selNode?.placement === 'free') return;
             const id = addChild(map, selectedId);
             selectedId = id;
             needsCenterOnRoot = false;
@@ -191,6 +211,8 @@ function wireUI() {
     if (addSiblingBtn) {
         addSiblingBtn.onclick = () => {
             if (!map) return;
+            const selNode = selectedId ? map.nodes[selectedId] : null;
+            if (selNode?.placement === 'free') return;
             const id = addSibling(map, selectedId);
             if (id) {
                 selectedId = id;
@@ -206,8 +228,22 @@ function wireUI() {
     if (deleteBtn) {
         deleteBtn.onclick = () => {
             if (!map) return;
+            // Delete selected link first
+            if (selectedLinkId) {
+                deleteLink(map, selectedLinkId);
+                selectLink(null);
+                update();
+                markMapChanged();
+                return;
+            }
+            const selNode = selectedId ? map.nodes[selectedId] : null;
             deleteNode(map, selectedId);
-            selectedId = map.rootId;
+            // After deleting a free node, keep the root selected
+            if (selNode?.placement !== 'free') {
+                selectedId = map.rootId;
+            } else {
+                selectedId = map.rootId;
+            }
             needsCenterOnRoot = false;
             markLayoutDirty();
             update();
@@ -405,19 +441,61 @@ function wireUI() {
         if (!map) return;
         const g = e.target.closest('.node');
         if (g) {
+            const node = map.nodes[g.dataset.id];
+            if (node?.nodeType === 'card') {
+                // Card title: handled via mindmap:card-title-click
+                // Card body: handled via mindmap:card-body-dblclick
+                return;
+            }
             startEditing(g.dataset.id);
+        } else {
+            // Double-click on canvas background → create free bubble
+            const svgRect = svgElement.getBoundingClientRect();
+            const svgX = (e.clientX - svgRect.left - pan.x) / pan.scale;
+            const svgY = (e.clientY - svgRect.top - pan.y) / pan.scale;
+            const id = addFreeBubble(map, svgX - 50, svgY - 20);
+            selectedId = id;
+            selectLink(null);
+            markLayoutDirty();
+            update();
+            markMapChanged();
+            startEditing(id);
         }
     });
 
     svgElement.addEventListener('mousedown', e => {
         if (!map) return;
         if (e.button !== 0) return;
-        const node = e.target.closest('.node');
-        if (node) {
+
+        // Check for free-link click (click on link hit area)
+        const freeLinkEl = e.target.closest('.free-link');
+        if (freeLinkEl) {
             e.preventDefault();
-            startNodeDrag(node, e);
+            const linkId = freeLinkEl.dataset.linkId;
+            selectLink(linkId);
+            selectedId = null;
+            update();
             return;
         }
+
+        const nodeEl = e.target.closest('.node');
+        if (nodeEl) {
+            // Clicking on a node deselects the link
+            if (selectedLinkId) {
+                selectLink(null);
+                update();
+            }
+            e.preventDefault();
+            startNodeDrag(nodeEl, e);
+            return;
+        }
+
+        // Click on canvas background → deselect link
+        if (selectedLinkId) {
+            selectLink(null);
+            update();
+        }
+
         isPanning = true;
         panStart = { x: e.clientX - pan.x, y: e.clientY - pan.y };
     });
@@ -446,7 +524,7 @@ function wireUI() {
         if (!map) return;
         e.preventDefault();
         const delta = e.deltaY > 0 ? -0.1 : 0.1;
-        pan.scale = Math.min(2, Math.max(0.25, pan.scale + delta));
+        pan.scale = Math.min(5, Math.max(0.05, pan.scale + delta));
         scheduleUpdate();
     }, { passive: false });
 
@@ -465,9 +543,109 @@ function wireUI() {
         });
     }
 
+    if (shareBtn) {
+        shareBtn.onclick = async () => {
+            if (!map || !map.id) {
+                alert('Sauvegardez la carte avant de la partager.');
+                return;
+            }
+            try {
+                const resp = await fetch(`/api/maps/${map.id}/share`, {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    credentials: 'include'
+                });
+                if (!resp.ok) { alert('Impossible de générer le lien de partage.'); return; }
+                const data = await resp.json();
+                const url = `${location.origin}/s/${data.token}`;
+                await navigator.clipboard.writeText(url).catch(() => {});
+                alert(`Lien de partage copié :\n${url}`);
+            } catch {
+                alert('Erreur lors de la génération du lien.');
+            }
+        };
+    }
+
+    if (outlineBtn) {
+        outlineBtn.onclick = toggleOutline;
+    }
+
+    viewport.addEventListener('contextmenu', e => {
+        e.preventDefault();
+        if (!map) return;
+        const nodeEl = e.target.closest('.node');
+        if (!nodeEl) return;
+        const nodeId = nodeEl.dataset.id;
+        showTagContextMenu(e.clientX, e.clientY, nodeId);
+    });
+
+    const addTagDefBtn = document.getElementById('addTagDefBtn');
+    if (addTagDefBtn) {
+        addTagDefBtn.addEventListener('click', () => {
+            if (!map) return;
+            const nameInput = document.getElementById('newTagNameInput');
+            const colorInput = document.getElementById('newTagColorInput');
+            const name = nameInput?.value?.trim();
+            if (!name) return;
+            addTagDef(map, name, colorInput?.value || '#94a3b8');
+            if (nameInput) nameInput.value = '';
+            populateTagDefs();
+            update();
+            markMapChanged();
+        });
+    }
+
+    // Auto-switch to outline on mobile
+    const mq = window.matchMedia('(max-width: 768px)');
+    if (mq.matches) toggleOutline(true);
+    mq.addEventListener('change', e => {
+        if (e.matches && !outlineMode) toggleOutline(true);
+        else if (!e.matches && outlineMode) toggleOutline(false);
+    });
+
+    // Card custom events (dispatched from render.js)
+    document.addEventListener('mindmap:card-toggle', e => {
+        if (!map) return;
+        const { nodeId } = e.detail;
+        toggleCardExpanded(map, nodeId);
+        update();
+        markMapChanged();
+    });
+
+    document.addEventListener('mindmap:card-title-click', e => {
+        if (!map) return;
+        const { nodeId, titleEl } = e.detail;
+        if (!titleEl || titleEl._editing) return;
+        selectedId = nodeId;
+        startCardTitleEditing(nodeId, titleEl);
+        update();
+    });
+
+    document.addEventListener('mindmap:card-body-dblclick', e => {
+        if (!map) return;
+        const { nodeId } = e.detail;
+        selectedId = nodeId;
+        startCardBodyEditing(nodeId);
+    });
+
+    document.addEventListener('mindmap:card-select', e => {
+        if (!map) return;
+        selectedId = e.detail.nodeId;
+        selectLink(null);
+        update();
+    });
+
+    document.addEventListener('mindmap:card-drag-start', e => {
+        if (!map) return;
+        const { nodeId, clientX, clientY, shiftKey } = e.detail;
+        const nodeEl = viewport.querySelector(`.node[data-id="${nodeId}"]`);
+        if (!nodeEl) return;
+        startNodeDrag(nodeEl, { clientX, clientY, shiftKey, button: 0 });
+    });
+
     window.addEventListener('keydown', e => {
         if (!map) return;
-        if (e.target instanceof HTMLInputElement) return;
+        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
         if (e.key === 'Tab') {
             e.preventDefault();
             addChildBtn?.onclick();
@@ -476,6 +654,14 @@ function wireUI() {
             addSiblingBtn?.onclick();
         } else if (e.key === 'Delete' || e.key === 'Backspace') {
             e.preventDefault();
+            // Delete selected link first, then selected node
+            if (selectedLinkId) {
+                deleteLink(map, selectedLinkId);
+                selectLink(null);
+                update();
+                markMapChanged();
+                return;
+            }
             deleteBtn?.onclick();
         } else if (e.key === 'f' && e.ctrlKey) {
             e.preventDefault();
@@ -524,7 +710,33 @@ function wireUI() {
                     markMapChanged();
                 }
             }
+        } else if (e.key === 'n' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            e.preventDefault();
+            // Create a card at the center of the visible canvas area
+            const svgRect = svgElement.getBoundingClientRect();
+            const centerX = (svgRect.width / 2 - pan.x) / pan.scale;
+            const centerY = (svgRect.height / 2 - pan.y) / pan.scale;
+            const id = addCard(map, centerX - 140, centerY - 60);
+            selectedId = id;
+            selectLink(null);
+            markLayoutDirty();
+            update();
+            markMapChanged();
+        } else if (e.key === 'm' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            e.preventDefault();
+            if (selectedId && map.nodes[selectedId]?.placement === 'free' && map.nodes[selectedId]?.nodeType !== 'card') {
+                if (convertToCard(map, selectedId)) {
+                    markLayoutDirty();
+                    update();
+                    markMapChanged();
+                }
+            }
         } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            // Don't hijack 'n' and 'm' (handled above)
+            if (e.key === 'n' || e.key === 'm') return;
+            // Only edit tree/free bubbles, not cards (cards have their own editing)
+            const selNode = selectedId ? map.nodes[selectedId] : null;
+            if (selNode?.nodeType === 'card') return;
             startEditing(selectedId, e.key);
             e.preventDefault();
         }
@@ -604,6 +816,7 @@ function setCurrentMap(newMap, { center = true, remember = true } = {}) {
     layoutDirty = true;
     autosavePending = false;
     lastSaveError = null;
+    selectLink(null);
     clearRenderCache();
     if (remember && map?.id) {
         localStorage.setItem(LAST_MAP_STORAGE_KEY, map.id);
@@ -687,11 +900,69 @@ function fitToScreen() {
 
 function startNodeDrag(nodeEl, event) {
     const id = nodeEl.dataset.id;
-    if (!id || !map || id === map.rootId) return;
+    if (!id || !map) return;
     if (editingInput) return;
+
+    const node = map.nodes[id];
+    if (!node) return;
+
+    const svgRect = svgElement.getBoundingClientRect();
+
+    // Shift+drag from ANY node → link creation mode
+    if (event.shiftKey) {
+        dragState = {
+            id,
+            mode: 'link',
+            startX: event.clientX,
+            startY: event.clientY,
+            hasMoved: false
+        };
+        return;
+    }
+
+    // Free nodes (bubbles and cards)
+    if (node.placement === 'free') {
+        // Check for card resize: click near right edge
+        if (node.nodeType === 'card') {
+            const clickSvgX = (event.clientX - svgRect.left - pan.x) / pan.scale;
+            const nodeRightEdge = (node.fx || 0) + (node.cardWidth || 280);
+            if (Math.abs(clickSvgX - nodeRightEdge) < 10 / pan.scale) {
+                dragState = {
+                    id,
+                    mode: 'resize',
+                    startClientX: event.clientX,
+                    startCardWidth: node.cardWidth || 280,
+                    startX: event.clientX,
+                    startY: event.clientY,
+                    hasMoved: false,
+                    originEl: nodeEl
+                };
+                return;
+            }
+        }
+
+        // Free drag
+        const clickSvgX = (event.clientX - svgRect.left - pan.x) / pan.scale;
+        const clickSvgY = (event.clientY - svgRect.top - pan.y) / pan.scale;
+        dragState = {
+            id,
+            mode: 'free',
+            svgOffsetX: clickSvgX - (node.fx ?? node.x ?? 0),
+            svgOffsetY: clickSvgY - (node.fy ?? node.y ?? 0),
+            startX: event.clientX,
+            startY: event.clientY,
+            hasMoved: false,
+            originEl: nodeEl
+        };
+        return;
+    }
+
+    // Tree node → reparent drag (existing behavior)
+    if (id === map.rootId) return;
     const rect = nodeEl.getBoundingClientRect();
     dragState = {
         id,
+        mode: 'reparent',
         originEl: nodeEl,
         offsetX: event.clientX - rect.left,
         offsetY: event.clientY - rect.top,
@@ -707,32 +978,75 @@ const DROP_TARGET_THROTTLE = 50;
 
 function updateNodeDrag(event) {
     if (!dragState || !map) return;
+    const { mode } = dragState;
+
     if (!dragState.hasMoved) {
         const dx = Math.abs(event.clientX - dragState.startX);
         const dy = Math.abs(event.clientY - dragState.startY);
         if (dx > 3 || dy > 3) {
             dragState.hasMoved = true;
-            ensureDragPreview();
+            if (mode === 'reparent') ensureDragPreview();
         }
     }
     if (!dragState.hasMoved) return;
     event.preventDefault();
+
+    if (mode === 'free') {
+        const svgRect = svgElement.getBoundingClientRect();
+        const svgX = (event.clientX - svgRect.left - pan.x) / pan.scale;
+        const svgY = (event.clientY - svgRect.top - pan.y) / pan.scale;
+        const node = map.nodes[dragState.id];
+        if (node) {
+            node.fx = svgX - dragState.svgOffsetX;
+            node.fy = svgY - dragState.svgOffsetY;
+        }
+        markLayoutDirty();
+        scheduleUpdate();
+        return;
+    }
+
+    if (mode === 'resize') {
+        const dx = event.clientX - dragState.startClientX;
+        const newWidth = Math.max(200, dragState.startCardWidth + dx / pan.scale);
+        const node = map.nodes[dragState.id];
+        if (node) {
+            node.cardWidth = newWidth;
+            node.w = newWidth;
+        }
+        markLayoutDirty();
+        scheduleUpdate();
+        return;
+    }
+
+    if (mode === 'link') {
+        updateLinkPreview(event);
+        dragState.lastClientX = event.clientX;
+        dragState.lastClientY = event.clientY;
+        return;
+    }
+
+    // Reparent mode (existing behavior)
     dragState.lastClientX = event.clientX;
     positionDragPreview(event.clientX, event.clientY);
 
-    // Throttle drop target detection
     const now = performance.now();
     if (now - lastDropTargetCheck < DROP_TARGET_THROTTLE) return;
     lastDropTargetCheck = now;
 
     const el = document.elementFromPoint(event.clientX, event.clientY);
-    const node = el ? el.closest('.node') : null;
-    if (!node) {
+    const nodeEl = el ? el.closest('.node') : null;
+    if (!nodeEl) {
         clearDropTarget();
         return;
     }
-    const targetId = node.dataset.id;
+    const targetId = nodeEl.dataset.id;
     if (!targetId || targetId === dragState.id) {
+        clearDropTarget();
+        return;
+    }
+    // Can only reparent to tree nodes
+    const targetNode = map.nodes[targetId];
+    if (targetNode?.placement === 'free') {
         clearDropTarget();
         return;
     }
@@ -740,24 +1054,66 @@ function updateNodeDrag(event) {
         clearDropTarget();
         return;
     }
-    setDropTarget(node, targetId);
+    setDropTarget(nodeEl, targetId);
 }
 
 function endNodeDrag() {
     if (!dragState || !map) return;
-    const { preview, originEl, id, hasMoved, lastClientX } = dragState;
-    if (preview && preview.parentNode) {
-        preview.parentNode.removeChild(preview);
+    const { mode, id, hasMoved } = dragState;
+
+    if (mode === 'free') {
+        const { originEl } = dragState;
+        if (originEl?.classList) originEl.classList.remove('drag-origin');
+        dragState = null;
+        if (hasMoved) {
+            markMapChanged();
+            update();
+        }
+        suppressClick = hasMoved;
+        return;
     }
-    if (originEl && originEl.classList) {
-        originEl.classList.remove('drag-origin');
+
+    if (mode === 'resize') {
+        dragState = null;
+        if (hasMoved) {
+            markMapChanged();
+            update();
+        }
+        suppressClick = hasMoved;
+        return;
     }
+
+    if (mode === 'link') {
+        removeLinkPreview();
+        const lastX = dragState.lastClientX;
+        const lastY = dragState.lastClientY;
+        dragState = null;
+        if (hasMoved && lastX != null && lastY != null) {
+            const el = document.elementFromPoint(lastX, lastY);
+            const targetNodeEl = el?.closest('.node');
+            const targetId = targetNodeEl?.dataset?.id;
+            if (targetId && targetId !== id) {
+                const link = addLink(map, id, targetId);
+                if (link) {
+                    selectLink(link.id);
+                    update();
+                    markMapChanged();
+                }
+            }
+        }
+        suppressClick = hasMoved;
+        return;
+    }
+
+    // Reparent mode (existing behavior)
+    const { preview, originEl, lastClientX } = dragState;
+    if (preview?.parentNode) preview.parentNode.removeChild(preview);
+    if (originEl?.classList) originEl.classList.remove('drag-origin');
     document.body.classList.remove('dragging-node');
     const targetId = dropTargetId;
     clearDropTarget();
     dragState = null;
     if (targetId && reparentNode(map, id, targetId)) {
-        // If dropped on root, determine side from cursor position
         if (targetId === map.rootId) {
             const rootNode = map.nodes[map.rootId];
             const svgEl = document.getElementById('mindmap');
@@ -781,6 +1137,42 @@ function positionDragPreview(clientX, clientY) {
     const x = clientX - dragState.offsetX;
     const y = clientY - dragState.offsetY;
     dragState.preview.style.transform = `translate(${x}px, ${y}px)`;
+}
+
+function selectLink(linkId) {
+    selectedLinkId = linkId;
+    setSelectedLinkId(linkId);
+}
+
+function updateLinkPreview(event) {
+    if (!dragState) return;
+    const sourceNode = map.nodes[dragState.id];
+    if (!sourceNode || !isFinite(sourceNode.x)) return;
+
+    const svgRect = svgElement.getBoundingClientRect();
+    const svgX = (event.clientX - svgRect.left - pan.x) / pan.scale;
+    const svgY = (event.clientY - svgRect.top - pan.y) / pan.scale;
+
+    const x1 = sourceNode.x + sourceNode.w / 2;
+    const y1 = sourceNode.y + sourceNode.h / 2;
+
+    if (!linkPreviewEl) {
+        linkPreviewEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        linkPreviewEl.setAttribute('stroke', '#94a3b8');
+        linkPreviewEl.setAttribute('stroke-width', '2');
+        linkPreviewEl.setAttribute('stroke-dasharray', '6 3');
+        linkPreviewEl.setAttribute('fill', 'none');
+        linkPreviewEl.setAttribute('pointer-events', 'none');
+        viewport.appendChild(linkPreviewEl);
+    }
+    linkPreviewEl.setAttribute('d', `M${x1},${y1} L${svgX},${svgY}`);
+}
+
+function removeLinkPreview() {
+    if (linkPreviewEl) {
+        linkPreviewEl.remove();
+        linkPreviewEl = null;
+    }
 }
 
 function clearDropTarget() {
@@ -892,6 +1284,87 @@ function finishEditing() {
     markMapChanged();
 }
 
+function startCardTitleEditing(nodeId, titleEl) {
+    if (!map || !titleEl) return;
+    const node = map.nodes[nodeId];
+    if (!node) return;
+    titleEl._editing = true;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = node.text;
+    input.style.cssText = 'font-weight:600;font-size:14px;border:none;outline:none;background:transparent;width:100%;font-family:inherit;';
+
+    const originalText = node.text;
+    titleEl.textContent = '';
+    titleEl.appendChild(input);
+    input.focus();
+    input.select();
+
+    function finish() {
+        const newText = input.value.trim() || originalText;
+        node.text = newText;
+        titleEl._editing = false;
+        titleEl.textContent = newText;
+        markLayoutDirty();
+        update();
+        markMapChanged();
+    }
+
+    input.addEventListener('blur', finish, { once: true });
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === 'Escape') {
+            if (e.key === 'Escape') input.value = originalText;
+            input.blur();
+        }
+        e.stopPropagation();
+    });
+}
+
+function startCardBodyEditing(nodeId) {
+    if (!map) return;
+    const node = map.nodes[nodeId];
+    if (!node || node.nodeType !== 'card') return;
+
+    // Find the card's foreignObject body element in the DOM
+    const nodeEl = viewport.querySelector(`.node[data-id="${nodeId}"]`);
+    if (!nodeEl) return;
+    const bodyEl = nodeEl.querySelector('.card-body');
+    if (!bodyEl || bodyEl._editing) return;
+
+    bodyEl._editing = true;
+    const originalBody = node.body || '';
+
+    const textarea = document.createElement('textarea');
+    textarea.className = 'card-body-edit';
+    textarea.value = originalBody;
+    textarea.style.height = Math.max(120, bodyEl.scrollHeight) + 'px';
+
+    bodyEl.innerHTML = '';
+    bodyEl.appendChild(textarea);
+    textarea.focus();
+
+    function finish() {
+        const newBody = textarea.value;
+        node.body = newBody;
+        node._bodyRaw = null; // Force re-parse
+        bodyEl._editing = false;
+        markLayoutDirty();
+        update();
+        markMapChanged();
+    }
+
+    textarea.addEventListener('blur', finish, { once: true });
+    textarea.addEventListener('keydown', e => {
+        if (e.key === 'Escape') {
+            textarea.value = originalBody;
+            textarea.blur();
+        }
+        e.stopPropagation();
+    });
+    textarea.addEventListener('mousedown', e => e.stopPropagation());
+}
+
 function openConfig() {
     if (!map) return;
     ensureSettings(map);
@@ -902,6 +1375,7 @@ function openConfig() {
         autosaveDelayInput.value = map.settings.autosaveDelay || DEFAULTS.autosaveDelay;
         autosaveDelayInput.min = String(MIN_AUTOSAVE_DELAY);
     }
+    populateTagDefs();
     configModal.classList.remove('hidden');
     modalBackdrop.classList.remove('hidden');
 }
@@ -942,6 +1416,116 @@ function addColorInput(index, value) {
     row.appendChild(label);
     row.appendChild(input);
     levelColorsContainer.appendChild(row);
+}
+
+function populateTagDefs() {
+    const container = document.getElementById('tagDefsContainer');
+    if (!container || !map) return;
+    const tags = (map.settings && map.settings.tags) || [];
+    container.innerHTML = '';
+    tags.forEach(tag => {
+        const row = document.createElement('div');
+        row.className = 'config-row';
+        const info = document.createElement('div');
+        info.style.cssText = 'display:flex;align-items:center;gap:8px;flex:1;';
+        const dot = document.createElement('span');
+        dot.style.cssText = `display:inline-block;width:12px;height:12px;border-radius:50%;background:${tag.color};flex-shrink:0;`;
+        const name = document.createElement('span');
+        name.style.fontSize = '13px';
+        name.textContent = tag.name;
+        info.appendChild(dot);
+        info.appendChild(name);
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'secondary';
+        del.textContent = '×';
+        del.style.cssText = 'width:28px;height:28px;padding:0;font-size:16px;line-height:1;';
+        del.onclick = () => {
+            removeTagDef(map, tag.id);
+            populateTagDefs();
+            update();
+            markMapChanged();
+        };
+        row.appendChild(info);
+        row.appendChild(del);
+        container.appendChild(row);
+    });
+}
+
+function showTagContextMenu(x, y, nodeId) {
+    document.querySelectorAll('.tag-context-menu').forEach(m => m.remove());
+    const tags = (map.settings && map.settings.tags) || [];
+    if (!tags.length) return;
+    const node = map.nodes[nodeId];
+    if (!node) return;
+    const nodeTags = node.tags || [];
+
+    const menu = document.createElement('div');
+    menu.className = 'context-menu tag-context-menu';
+
+    const header = document.createElement('div');
+    header.className = 'move-menu-header';
+    header.textContent = 'Etiquettes';
+    menu.appendChild(header);
+
+    tags.forEach(tag => {
+        const btn = document.createElement('button');
+        const isActive = nodeTags.includes(tag.id);
+        btn.innerHTML = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${tag.color};margin-right:8px;vertical-align:middle;"></span>${tag.name}${isActive ? ' ✓' : ''}`;
+        btn.onclick = () => {
+            menu.remove();
+            toggleNodeTag(map, nodeId, tag.id);
+            update();
+            markMapChanged();
+        };
+        menu.appendChild(btn);
+    });
+
+    menu.style.position = 'fixed';
+    menu.style.top = Math.min(y, window.innerHeight - 200) + 'px';
+    menu.style.left = Math.min(x, window.innerWidth - 200) + 'px';
+    document.body.appendChild(menu);
+
+    setTimeout(() => {
+        document.addEventListener('click', function close() {
+            menu.remove();
+            document.removeEventListener('click', close);
+        }, { once: true });
+    }, 0);
+}
+
+function toggleOutline(force) {
+    outlineMode = force !== undefined ? force : !outlineMode;
+    if (outlineMode) {
+        svgElement.style.display = 'none';
+        if (outlineView) outlineView.classList.remove('hidden');
+        if (outlineBtn) outlineBtn.classList.add('active');
+        if (map) {
+            initOutline(map, outlineContent, {
+                onSelectNode: (id) => {
+                    selectedId = id;
+                    outlineMode = false;
+                    toggleOutline(false);
+                    update();
+                },
+                onAddChild: (parentId, text) => {
+                    const id = addChild(map, parentId);
+                    if (id) {
+                        map.nodes[id].text = text;
+                        markLayoutDirty();
+                        update();
+                        markMapChanged();
+                        renderOutline(map);
+                    }
+                }
+            });
+        }
+    } else {
+        svgElement.style.display = '';
+        if (outlineView) outlineView.classList.add('hidden');
+        if (outlineBtn) outlineBtn.classList.remove('active');
+        update();
+    }
 }
 
 function openMapList() {

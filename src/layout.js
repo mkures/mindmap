@@ -200,17 +200,44 @@ export function layout(map) {
         }
     }
 
+    // Compute bounding box and center from TREE nodes only (skip free nodes)
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     Object.values(map.nodes).forEach(n => {
+        if (n.placement === 'free') return;
+        if (!isFinite(n.x) || !isFinite(n.y)) return;
         minX = Math.min(minX, n.x);
         minY = Math.min(minY, n.y);
-        maxX = Math.max(maxX, n.x + n.w);
-        maxY = Math.max(maxY, n.y + n.h);
+        maxX = Math.max(maxX, n.x + (n.w || 0));
+        maxY = Math.max(maxY, n.y + (n.h || 0));
     });
-    const offsetX = -(minX + maxX) / 2;
-    const offsetY = -(minY + maxY) / 2;
+
+    if (isFinite(minX)) {
+        const offsetX = -(minX + maxX) / 2;
+        const offsetY = -(minY + maxY) / 2;
+        Object.values(map.nodes).forEach(n => {
+            if (n.placement === 'free') return;
+            n.x += offsetX;
+            n.y += offsetY;
+        });
+    }
+
+    // Position free nodes (bubbles and cards) at their stored (fx, fy)
     Object.values(map.nodes).forEach(n => {
-        n.x += offsetX;
-        n.y += offsetY;
+        if (n.placement !== 'free') return;
+        if (n.fx == null || n.fy == null) return;
+        n.x = n.fx;
+        n.y = n.fy;
+        if (n.nodeType === 'card') {
+            n.w = n.cardWidth || 280;
+            if (!n.h || n.h < 40) n.h = 120; // default height, will be refined by render.js
+        } else {
+            // Measure free bubble size like a regular node
+            const textWidth = (n.text || '').length * CHAR_WIDTH;
+            const contentWidth = Math.min(textWidth, MAX_NODE_W - PADDING);
+            n.w = Math.max(MIN_NODE_W, contentWidth + PADDING);
+            n._lines = wrapText(n.text, MAX_NODE_W - PADDING);
+            const textHeight = n._lines.length * LINE_HEIGHT + 10;
+            n.h = Math.max(NODE_H, textHeight);
+        }
     });
 }

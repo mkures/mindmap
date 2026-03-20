@@ -1,5 +1,5 @@
 const MIN_NODE_W = 80;
-const MAX_NODE_W = 200;
+const MAX_NODE_W = 280;
 const NODE_H = 40;
 const LINE_HEIGHT = 20;
 const H_GAP = 60;
@@ -15,23 +15,27 @@ function wrapText(text, maxWidth) {
     const words = text.split(/\s+/);
     const lines = [];
     let currentLine = '';
+    const maxChars = Math.floor(maxWidth / CHAR_WIDTH);
 
     for (const word of words) {
-        const testLine = currentLine ? `${currentLine} ${word}` : word;
-        const testWidth = testLine.length * CHAR_WIDTH;
+        // Hard-break word if it exceeds maxWidth alone
+        let remaining = word;
+        while (remaining.length > maxChars) {
+            if (currentLine) { lines.push(currentLine); currentLine = ''; }
+            lines.push(remaining.slice(0, maxChars));
+            remaining = remaining.slice(maxChars);
+        }
+        if (!remaining) continue;
 
-        if (testWidth > maxWidth && currentLine) {
+        const testLine = currentLine ? `${currentLine} ${remaining}` : remaining;
+        if (testLine.length * CHAR_WIDTH > maxWidth && currentLine) {
             lines.push(currentLine);
-            currentLine = word;
+            currentLine = remaining;
         } else {
             currentLine = testLine;
         }
     }
-
-    if (currentLine) {
-        lines.push(currentLine);
-    }
-
+    if (currentLine) lines.push(currentLine);
     return lines.length ? lines : [text];
 }
 
@@ -221,23 +225,20 @@ export function layout(map) {
         });
     }
 
-    // Position free nodes (bubbles and cards) at their stored (fx, fy)
+    // Position free nodes (bubbles) at their stored (fx, fy)
     Object.values(map.nodes).forEach(n => {
         if (n.placement !== 'free') return;
         if (n.fx == null || n.fy == null) return;
         n.x = n.fx;
         n.y = n.fy;
-        if (n.nodeType === 'card') {
-            n.w = n.cardWidth || 280;
-            if (!n.h || n.h < 40) n.h = 120; // default height, will be refined by render.js
-        } else {
-            // Measure free bubble size like a regular node
-            const textWidth = (n.text || '').length * CHAR_WIDTH;
-            const contentWidth = Math.min(textWidth, MAX_NODE_W - PADDING);
-            n.w = Math.max(MIN_NODE_W, contentWidth + PADDING);
-            n._lines = wrapText(n.text, MAX_NODE_W - PADDING);
-            const textHeight = n._lines.length * LINE_HEIGHT + 10;
-            n.h = Math.max(NODE_H, textHeight);
-        }
+        const textWidth = (n.text || '').length * CHAR_WIDTH;
+        const contentWidth = Math.min(textWidth, MAX_NODE_W - PADDING);
+        n.w = Math.max(MIN_NODE_W, contentWidth + PADDING);
+        n._lines = wrapText(n.text, MAX_NODE_W - PADDING);
+        const textHeight = n._lines.length * LINE_HEIGHT + 10;
+        const mediaWidth = n.media ? n.media.width + 10 : 0;
+        const mediaHeight = n.media ? n.media.height + 10 : 0;
+        n.w = Math.max(MIN_NODE_W, contentWidth + PADDING + mediaWidth);
+        n.h = Math.max(NODE_H, textHeight, mediaHeight);
     });
 }

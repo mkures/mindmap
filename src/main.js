@@ -187,6 +187,7 @@ function wireUI() {
             closeMapList();
             closeHelp();
             closeNoteModal();
+            closeNoteViewModal();
         });
     }
 
@@ -566,12 +567,22 @@ function wireUI() {
     if (noteCloseBtn) noteCloseBtn.addEventListener('click', closeNoteModal);
     const noteSaveBtn = document.getElementById('noteSaveBtn');
     if (noteSaveBtn) noteSaveBtn.addEventListener('click', closeNoteModal);
-    const noteTextarea = document.getElementById('noteModalBody');
-    if (noteTextarea) {
-        noteTextarea.addEventListener('keydown', e => {
-            if (e.key === 'Escape') { e.preventDefault(); closeNoteModal(); }
-        });
+
+    // Lightbox
+    const lightboxModal = document.getElementById('lightboxModal');
+    if (lightboxModal) {
+        lightboxModal.addEventListener('click', closeLightbox);
     }
+    // Note view modal
+    const noteViewCloseBtn = document.getElementById('noteViewCloseBtn');
+    if (noteViewCloseBtn) noteViewCloseBtn.addEventListener('click', closeNoteViewModal);
+
+    document.addEventListener('mindmap:image-click', e => {
+        openLightbox(e.detail.dataUrl);
+    });
+    document.addEventListener('mindmap:note-view', e => {
+        openNoteViewModal(e.detail.nodeId);
+    });
 
     const addTagDefBtn = document.getElementById('addTagDefBtn');
     if (addTagDefBtn) {
@@ -766,6 +777,8 @@ function update() {
     }
     render(map, viewport, selectedId);
     viewport.setAttribute('transform', `translate(${pan.x},${pan.y}) scale(${pan.scale})`);
+    const dotGrid = document.getElementById('dotGrid');
+    if (dotGrid) dotGrid.setAttribute('patternTransform', `translate(${pan.x},${pan.y}) scale(${pan.scale})`);
     if (map.settings && map.settings.fontFamily) {
         document.body.style.fontFamily = map.settings.fontFamily;
     }
@@ -1211,8 +1224,10 @@ function openConfig() {
 function closeConfig() {
     configModal.classList.add('hidden');
     const noteModal = document.getElementById('noteModal');
+    const noteViewModal = document.getElementById('noteViewModal');
     if (mapListModal.classList.contains('hidden') && helpModal.classList.contains('hidden') &&
-        (!noteModal || noteModal.classList.contains('hidden'))) {
+        (!noteModal || noteModal.classList.contains('hidden')) &&
+        (!noteViewModal || noteViewModal.classList.contains('hidden'))) {
         modalBackdrop.classList.add('hidden');
     }
 }
@@ -1220,8 +1235,10 @@ function closeConfig() {
 function closeHelp() {
     helpModal.classList.add('hidden');
     const noteModal = document.getElementById('noteModal');
+    const noteViewModal = document.getElementById('noteViewModal');
     if (configModal.classList.contains('hidden') && mapListModal.classList.contains('hidden') &&
-        (!noteModal || noteModal.classList.contains('hidden'))) {
+        (!noteModal || noteModal.classList.contains('hidden')) &&
+        (!noteViewModal || noteViewModal.classList.contains('hidden'))) {
         modalBackdrop.classList.add('hidden');
     }
 }
@@ -1388,41 +1405,133 @@ function showNodeContextMenu(x, y, nodeId) {
     }, 0);
 }
 
+let _toastEditor = null;
+
 function openNoteModal(nodeId) {
     if (!map) return;
     const node = map.nodes[nodeId];
     if (!node) return;
     const modal = document.getElementById('noteModal');
     const titleEl = document.getElementById('noteModalTitle');
-    const textarea = document.getElementById('noteModalBody');
-    if (!modal || !titleEl || !textarea) return;
+    const editorEl = document.getElementById('noteEditorContainer');
+    if (!modal || !titleEl || !editorEl) return;
     titleEl.textContent = node.text || 'Sans titre';
-    textarea.value = node.body || '';
     modal.dataset.nodeId = nodeId;
     modal.classList.remove('hidden');
     modalBackdrop.classList.remove('hidden');
-    textarea.focus();
+
+    // Init or reset Toast UI Editor
+    if (_toastEditor) {
+        _toastEditor.destroy();
+        _toastEditor = null;
+    }
+    editorEl.innerHTML = '';
+    if (window.toastui && window.toastui.Editor) {
+        _toastEditor = new window.toastui.Editor({
+            el: editorEl,
+            height: '360px',
+            initialEditType: 'markdown',
+            previewStyle: 'tab',
+            initialValue: node.body || '',
+            language: 'fr-FR',
+            toolbarItems: [
+                ['heading', 'bold', 'italic', 'strike'],
+                ['hr', 'quote'],
+                ['ul', 'ol', 'task'],
+                ['table', 'link'],
+                ['code', 'codeblock'],
+            ],
+        });
+    } else {
+        // Fallback to textarea if Toast UI not loaded
+        editorEl.innerHTML = `<textarea style="width:100%;min-height:360px;resize:vertical;font-family:monospace;font-size:13px;line-height:1.6;border:1px solid var(--border);border-radius:6px;padding:10px;box-sizing:border-box;">${(node.body || '').replace(/</g, '&lt;')}</textarea>`;
+    }
 }
 
 function closeNoteModal() {
     const modal = document.getElementById('noteModal');
-    const textarea = document.getElementById('noteModalBody');
-    if (!modal) return;
-    if (!modal.classList.contains('hidden')) {
-        const nodeId = modal.dataset.nodeId;
-        if (nodeId && map && map.nodes[nodeId] && textarea) {
-            const newBody = textarea.value;
-            if (newBody !== (map.nodes[nodeId].body || '')) {
-                map.nodes[nodeId].body = newBody;
-                update();
-                markMapChanged();
-            }
+    const editorEl = document.getElementById('noteEditorContainer');
+    if (!modal || modal.classList.contains('hidden')) return;
+    const nodeId = modal.dataset.nodeId;
+    if (nodeId && map && map.nodes[nodeId]) {
+        let newBody = '';
+        if (_toastEditor) {
+            newBody = _toastEditor.getMarkdown();
+        } else if (editorEl) {
+            const ta = editorEl.querySelector('textarea');
+            newBody = ta ? ta.value : '';
         }
-        modal.classList.add('hidden');
+        if (newBody !== (map.nodes[nodeId].body || '')) {
+            map.nodes[nodeId].body = newBody;
+            update();
+            markMapChanged();
+        }
     }
+    if (_toastEditor) { _toastEditor.destroy(); _toastEditor = null; }
+    modal.classList.add('hidden');
+    const noteViewModal = document.getElementById('noteViewModal');
     if (document.getElementById('mapListModal').classList.contains('hidden') &&
         document.getElementById('configModal').classList.contains('hidden') &&
-        document.getElementById('helpModal').classList.contains('hidden')) {
+        document.getElementById('helpModal').classList.contains('hidden') &&
+        (!noteViewModal || noteViewModal.classList.contains('hidden'))) {
+        modalBackdrop.classList.add('hidden');
+    }
+}
+
+function openLightbox(dataUrl) {
+    let lb = document.getElementById('lightboxModal');
+    if (!lb) return;
+    lb.querySelector('img').src = dataUrl;
+    lb.classList.remove('hidden');
+    // No backdrop needed, lightbox has its own overlay
+}
+
+function closeLightbox() {
+    const lb = document.getElementById('lightboxModal');
+    if (lb) lb.classList.add('hidden');
+}
+
+let _toastViewer = null;
+
+function openNoteViewModal(nodeId) {
+    if (!map) return;
+    const node = map.nodes[nodeId];
+    if (!node || !node.body) return;
+    const modal = document.getElementById('noteViewModal');
+    const titleEl = document.getElementById('noteViewTitle');
+    const viewerEl = document.getElementById('noteViewerContainer');
+    const editBtn = document.getElementById('noteViewEditBtn');
+    if (!modal || !titleEl || !viewerEl) return;
+    titleEl.textContent = node.text || 'Sans titre';
+    modal.dataset.nodeId = nodeId;
+
+    if (_toastViewer) { _toastViewer.destroy(); _toastViewer = null; }
+    viewerEl.innerHTML = '';
+    if (window.toastui && window.toastui.Editor) {
+        _toastViewer = window.toastui.Editor.factory({
+            el: viewerEl,
+            viewer: true,
+            initialValue: node.body || '',
+        });
+    } else {
+        viewerEl.innerHTML = typeof marked !== 'undefined'
+            ? marked.parse(node.body || '', { breaks: true, gfm: true })
+            : `<pre>${node.body}</pre>`;
+    }
+    if (editBtn) editBtn.onclick = () => { closeNoteViewModal(); openNoteModal(nodeId); };
+    modal.classList.remove('hidden');
+    modalBackdrop.classList.remove('hidden');
+}
+
+function closeNoteViewModal() {
+    const modal = document.getElementById('noteViewModal');
+    if (!modal) return;
+    if (_toastViewer) { _toastViewer.destroy(); _toastViewer = null; }
+    modal.classList.add('hidden');
+    if (document.getElementById('mapListModal').classList.contains('hidden') &&
+        document.getElementById('configModal').classList.contains('hidden') &&
+        document.getElementById('helpModal').classList.contains('hidden') &&
+        document.getElementById('noteModal').classList.contains('hidden')) {
         modalBackdrop.classList.add('hidden');
     }
 }

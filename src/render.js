@@ -179,6 +179,16 @@ function updateBubbleElement(g, node, settings, isSelected) {
         img.setAttribute('height', node.media.height);
         img.setAttribute('x', 5);
         img.setAttribute('y', (node.h - node.media.height) / 2);
+        if (!img._hasClickListener) {
+            img._hasClickListener = true;
+            img.style.cursor = 'zoom-in';
+            img.addEventListener('click', e => {
+                e.stopPropagation();
+                document.dispatchEvent(new CustomEvent('mindmap:image-click', {
+                    detail: { dataUrl: node.media.dataUrl }
+                }));
+            });
+        }
         offset += node.media.width + 5;
     } else if (img) {
         img.remove();
@@ -235,13 +245,23 @@ function updateBubbleElement(g, node, settings, isSelected) {
             noteIcon.setAttribute('font-size', '10');
             noteIcon.setAttribute('text-anchor', 'end');
             noteIcon.setAttribute('dominant-baseline', 'hanging');
-            noteIcon.setAttribute('pointer-events', 'none');
             noteIcon.textContent = '✎';
             g.appendChild(noteIcon);
         }
         noteIcon.setAttribute('x', node.w - 4);
         noteIcon.setAttribute('y', 3);
         noteIcon.setAttribute('fill', '#6366f1');
+        noteIcon.setAttribute('pointer-events', 'all');
+        noteIcon.style.cursor = 'pointer';
+        if (!noteIcon._hasClickListener) {
+            noteIcon._hasClickListener = true;
+            noteIcon.addEventListener('click', e => {
+                e.stopPropagation();
+                document.dispatchEvent(new CustomEvent('mindmap:note-view', {
+                    detail: { nodeId: g.dataset.id }
+                }));
+            });
+        }
     } else if (noteIcon) {
         noteIcon.remove();
     }

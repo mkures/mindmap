@@ -323,7 +323,8 @@ def backup_to_r2():
             region_name='auto'
         )
         timestamp = time.strftime('%Y%m%d-%H%M%S')
-        key = r2_key.replace('.db', f'-{timestamp}.db') if '.' in r2_key else f'{r2_key}-{timestamp}'
+        base = r2_key[:-3] if r2_key.endswith('.db') else r2_key
+        key = f'{base}-{timestamp}.db'
         s3.upload_file(tmp.name, r2_bucket, key)
         os.unlink(tmp.name)
         return jsonify({'success': True, 'key': key, 'bucket': r2_bucket})

@@ -435,23 +435,11 @@ function wireUI() {
         }
     });
 
-    viewport.addEventListener('dblclick', e => {
+    svgElement.addEventListener('dblclick', e => {
         if (!map) return;
         const g = e.target.closest('.node');
         if (g) {
             startEditing(g.dataset.id);
-        } else {
-            // Double-click on canvas background → create free bubble
-            const svgRect = svgElement.getBoundingClientRect();
-            const svgX = (e.clientX - svgRect.left - pan.x) / pan.scale;
-            const svgY = (e.clientY - svgRect.top - pan.y) / pan.scale;
-            const id = addFreeBubble(map, svgX - 50, svgY - 20);
-            selectedId = id;
-            selectLink(null);
-            markLayoutDirty();
-            update();
-            markMapChanged();
-            startEditing(id);
         }
     });
 
@@ -562,13 +550,15 @@ function wireUI() {
         outlineBtn.onclick = () => toggleOutline();
     }
 
-    viewport.addEventListener('contextmenu', e => {
+    svgElement.addEventListener('contextmenu', e => {
         e.preventDefault();
         if (!map) return;
         const nodeEl = e.target.closest('.node');
-        if (!nodeEl) return;
-        const nodeId = nodeEl.dataset.id;
-        showNodeContextMenu(e.clientX, e.clientY, nodeId);
+        if (nodeEl) {
+            showNodeContextMenu(e.clientX, e.clientY, nodeEl.dataset.id);
+        } else {
+            showCanvasContextMenu(e.clientX, e.clientY, e);
+        }
     });
 
     // Note modal wiring
@@ -1292,6 +1282,46 @@ function populateTagDefs() {
         row.appendChild(del);
         container.appendChild(row);
     });
+}
+
+function showCanvasContextMenu(x, y, mouseEvent) {
+    document.querySelectorAll('.node-context-menu').forEach(m => m.remove());
+    const menu = document.createElement('div');
+    menu.className = 'context-menu node-context-menu';
+
+    const addBubbleBtn = document.createElement('button');
+    addBubbleBtn.textContent = '+ Nouvelle bulle';
+    addBubbleBtn.onclick = () => {
+        menu.remove();
+        const svgRect = svgElement.getBoundingClientRect();
+        const svgX = (mouseEvent.clientX - svgRect.left - pan.x) / pan.scale;
+        const svgY = (mouseEvent.clientY - svgRect.top - pan.y) / pan.scale;
+        const id = addFreeBubble(map, svgX - 50, svgY - 20);
+        selectedId = id;
+        selectLink(null);
+        markLayoutDirty();
+        update();
+        markMapChanged();
+        startEditing(id);
+    };
+    menu.appendChild(addBubbleBtn);
+
+    const fitBtn2 = document.createElement('button');
+    fitBtn2.textContent = '⊡ Centrer la vue';
+    fitBtn2.onclick = () => { menu.remove(); fitToScreen(); };
+    menu.appendChild(fitBtn2);
+
+    menu.style.position = 'fixed';
+    menu.style.top = Math.min(y, window.innerHeight - 100) + 'px';
+    menu.style.left = Math.min(x, window.innerWidth - 180) + 'px';
+    document.body.appendChild(menu);
+
+    setTimeout(() => {
+        document.addEventListener('click', function close() {
+            menu.remove();
+            document.removeEventListener('click', close);
+        }, { once: true });
+    }, 0);
 }
 
 function showNodeContextMenu(x, y, nodeId) {

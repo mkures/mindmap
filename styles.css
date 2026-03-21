@@ -961,6 +961,32 @@ body.dragging-node {
     box-sizing: border-box;
 }
 
+.password-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+.password-wrapper input {
+    padding-right: 40px;
+}
+.password-toggle {
+    position: absolute;
+    right: 8px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    transition: color var(--duration) var(--ease);
+}
+.password-toggle:hover {
+    color: var(--text);
+}
+
 .auth-form input[type="text"]:focus,
 .auth-form input[type="password"]:focus {
     outline: none;

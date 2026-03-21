@@ -20,7 +20,15 @@
                 </div>
                 <div class="form-group">
                     <label for="password">Mot de passe</label>
-                    <input type="password" id="password" name="password" required autocomplete="current-password">
+                    <div class="password-wrapper">
+                        <input type="password" id="password" name="password" required autocomplete="current-password">
+                        <button type="button" class="password-toggle" id="togglePassword" tabindex="-1" aria-label="Afficher le mot de passe">
+                            <svg class="eye-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path class="eye-open" d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle class="eye-open" cx="12" cy="12" r="3"/>
+                                <line class="eye-slash" x1="1" y1="1" x2="23" y2="23" style="display:none"/>
+                            </svg>
+                        </button>
+                    </div>
                 </div>
                 <div id="loginError" class="auth-error hidden"></div>
                 <button type="submit" class="auth-btn">Se connecter</button>
@@ -28,6 +36,16 @@
         </div>
     </div>
     <script>
+        // Password visibility toggle
+        const toggleBtn = document.getElementById('togglePassword');
+        const pwdInput = document.getElementById('password');
+        toggleBtn.addEventListener('click', () => {
+            const visible = pwdInput.type === 'text';
+            pwdInput.type = visible ? 'password' : 'text';
+            toggleBtn.querySelector('.eye-slash').style.display = visible ? 'none' : '';
+            toggleBtn.setAttribute('aria-label', visible ? 'Afficher le mot de passe' : 'Masquer le mot de passe');
+        });
+
         const form = document.getElementById('loginForm');
         const errorEl = document.getElementById('loginError');
 

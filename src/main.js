@@ -29,6 +29,8 @@ import { layout } from './layout.js';
 import { render, clearRenderCache, setSelectedLinkId, setSelectedFrameId } from './render.js';
 import { exportMarkdown, exportImage, exportPdf } from './export.js';
 import { initOutline, renderOutline } from './outline.js';
+import { getTemplates, buildFromTemplate } from './templates.js';
+import { initCommandPalette, openCommandPalette } from './command-palette.js';
 
 const MAPS_ENDPOINT = '/api/maps';
 let LAST_MAP_STORAGE_KEY = 'mindmap:lastMapId';
@@ -136,6 +138,30 @@ let currentFolderName = null;
 let allFolders = [];
 let viewingTrash = false;
 let outlineMode = false;
+let focusRootId = null; // Focus mode: if set, only this subtree is visible
+
+// ── Toast notification system ──
+function showToast(msg, type = 'info') {
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+    const toast = document.createElement('div');
+    toast.className = `toast${type !== 'info' ? ' toast-' + type : ''}`;
+    toast.textContent = msg;
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.classList.add('toast-out');
+        toast.addEventListener('animationend', () => toast.remove());
+    }, 2500);
+}
+
+// ── Zoom HUD updater ──
+function updateHud() {
+    const hud = document.getElementById('zoomHud');
+    if (!hud || !map) return;
+    const pct = Math.round(pan.scale * 100);
+    const count = Object.keys(map.nodes).length;
+    hud.textContent = `${pct}% · ${count} nœuds`;
+}
 
 init();
 
@@ -277,11 +303,7 @@ function wireUI() {
 
     if (newBtn) {
         newBtn.onclick = () => {
-            const fresh = createEmptyMap();
-            markLayoutDirty();
-            setCurrentMap(fresh, { center: true, remember: false });
-            markMapChanged();
-            startEditing(selectedId);
+            showTemplatePicker();
         };
     }
 
@@ -335,6 +357,71 @@ function wireUI() {
         });
     }
 
+    // ── Clipboard paste image (Ctrl+V) ──
+    document.addEventListener('paste', e => {
+        if (!map) return;
+        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target.isContentEditable) return;
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        for (const item of items) {
+            if (item.type.startsWith('image/')) {
+                e.preventDefault();
+                const file = item.getAsFile();
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = ev => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const max = 128;
+                        let w = img.width, h = img.height, scale = 1;
+                        if (w >= h && w > max) scale = max / w;
+                        else if (h > w && h > max) scale = max / h;
+                        w = Math.round(w * scale);
+                        h = Math.round(h * scale);
+                        const canvas = document.createElement('canvas');
+                        canvas.width = w; canvas.height = h;
+                        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                        const dataUrl = canvas.toDataURL('image/png');
+
+                        if (selectedId) {
+                            // Paste onto selected node
+                            pushUndo();
+                            setNodeImage(map, selectedId, {
+                                kind: 'image', dataUrl,
+                                originalDataUrl: ev.target.result,
+                                width: w, height: h,
+                                naturalWidth: img.width, naturalHeight: img.height
+                            });
+                        } else {
+                            // Create new free bubble with image
+                            pushUndo();
+                            const svgW = svgElement.clientWidth;
+                            const svgH = svgElement.clientHeight;
+                            const fx = (svgW / 2 - pan.x) / pan.scale;
+                            const fy = (svgH / 2 - pan.y) / pan.scale;
+                            const bubble = addFreeBubble(map, fx, fy);
+                            if (bubble) {
+                                setNodeImage(map, bubble.id || bubble, {
+                                    kind: 'image', dataUrl,
+                                    originalDataUrl: ev.target.result,
+                                    width: w, height: h,
+                                    naturalWidth: img.width, naturalHeight: img.height
+                                });
+                            }
+                        }
+                        markLayoutDirty();
+                        update();
+                        markMapChanged();
+                        showToast('Image collée', 'success');
+                    };
+                    img.src = ev.target.result;
+                };
+                reader.readAsDataURL(file);
+                return;
+            }
+        }
+    });
+
     if (saveBtn) {
         saveBtn.onclick = () => {
             if (!map) return;
@@ -366,7 +453,7 @@ function wireUI() {
                     ensureSettings(parsed);
                     setCurrentMap(parsed, { center: true });
                 } catch (err) {
-                    alert('Invalid JSON');
+                    showToast('Format JSON invalide', 'error');
                 }
             };
             reader.readAsText(file);
@@ -505,6 +592,25 @@ function wireUI() {
         }
     });
 
+    // ── Node hover state (event delegation) ──
+    let hoveredEl = null;
+    svgElement.addEventListener('mouseover', e => {
+        if (dragState) return;
+        const nodeEl = e.target.closest('.node');
+        if (nodeEl && nodeEl !== hoveredEl) {
+            if (hoveredEl) hoveredEl.classList.remove('hovered');
+            nodeEl.classList.add('hovered');
+            hoveredEl = nodeEl;
+        }
+    });
+    svgElement.addEventListener('mouseout', e => {
+        const nodeEl = e.target.closest('.node');
+        if (nodeEl && nodeEl === hoveredEl) {
+            nodeEl.classList.remove('hovered');
+            hoveredEl = null;
+        }
+    });
+
     svgElement.addEventListener('mousedown', e => {
         if (!map) return;
         if (e.button !== 0) return;
@@ -608,7 +714,7 @@ function wireUI() {
     if (shareBtn) {
         shareBtn.onclick = async () => {
             if (!map || !map.id) {
-                alert('Sauvegardez la carte avant de la partager.');
+                showToast('Sauvegardez la carte avant de la partager.', 'error');
                 return;
             }
             try {
@@ -617,13 +723,13 @@ function wireUI() {
                     headers: getAuthHeaders(),
                     credentials: 'include'
                 });
-                if (!resp.ok) { alert('Impossible de générer le lien de partage.'); return; }
+                if (!resp.ok) { showToast('Impossible de générer le lien de partage.', 'error'); return; }
                 const data = await resp.json();
                 const url = `${location.origin}/s/${data.token}`;
                 await navigator.clipboard.writeText(url).catch(() => {});
-                alert(`Lien de partage copié :\n${url}`);
+                showToast('Lien de partage copié !', 'success');
             } catch {
-                alert('Erreur lors de la génération du lien.');
+                showToast('Erreur lors de la génération du lien.', 'error');
             }
         };
     }
@@ -734,10 +840,31 @@ function wireUI() {
 
     window.addEventListener('keydown', e => {
         if (!map) return;
+        // Command palette
+        if (e.key === 'k' && e.ctrlKey) {
+            e.preventDefault();
+            openCommandPalette();
+            return;
+        }
         // Allow Ctrl+F and Escape from search input
-        if (e.key === 'f' && e.ctrlKey) {
+        if (e.key === 'f' && e.ctrlKey && !e.shiftKey) {
             e.preventDefault();
             openSearch();
+            return;
+        }
+        // Focus mode: Ctrl+Shift+F to toggle, Escape to exit
+        if (e.key === 'F' && e.ctrlKey && e.shiftKey) {
+            e.preventDefault();
+            if (focusRootId) {
+                exitFocusMode();
+            } else if (selectedId) {
+                enterFocusMode(selectedId);
+            }
+            return;
+        }
+        if (e.key === 'Escape' && focusRootId) {
+            e.preventDefault();
+            exitFocusMode();
             return;
         }
         if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target.isContentEditable) return;
@@ -791,23 +918,35 @@ function wireUI() {
                 }
             }
             return;
+        } else if (e.key === 'a' && e.ctrlKey) {
+            e.preventDefault();
+            multiSelected.clear();
+            Object.keys(map.nodes).forEach(id => { if (id !== map.rootId) multiSelected.add(id); });
+            update();
+            showToast(`${multiSelected.size} nœuds sélectionnés`);
         } else if (e.key === 'c' && e.ctrlKey) {
             e.preventDefault();
-            if (selectedId) {
+            if (multiSelected.size > 0) {
+                clipboard = [];
+                for (const id of multiSelected) clipboard.push(copySubtree(map, id));
+                showToast(`${multiSelected.size} nœuds copiés`, 'success');
+            } else if (selectedId) {
                 clipboard = copySubtree(map, selectedId);
-                console.log('Copied node:', selectedId);
+                showToast('Nœud copié', 'success');
             }
         } else if (e.key === 'v' && e.ctrlKey) {
             e.preventDefault();
             if (clipboard && selectedId) {
                 pushUndo();
-                const newId = pasteSubtree(map, clipboard, selectedId);
-                if (newId) {
-                    selectedId = newId;
-                    markLayoutDirty();
-                    update();
-                    markMapChanged();
+                if (Array.isArray(clipboard)) {
+                    clipboard.forEach(sub => pasteSubtree(map, sub, selectedId));
+                } else {
+                    const newId = pasteSubtree(map, clipboard, selectedId);
+                    if (newId) selectedId = newId;
                 }
+                markLayoutDirty();
+                update();
+                markMapChanged();
             }
         } else if (e.key === 'F2') {
             e.preventDefault();
@@ -836,6 +975,76 @@ function wireUI() {
                     markMapChanged();
                 }
             }
+        // ── Arrow key tree navigation (bare, no modifier) ──
+        } else if (e.key === 'ArrowLeft' && !e.ctrlKey && !e.shiftKey) {
+            e.preventDefault();
+            if (selectedId) {
+                const node = map.nodes[selectedId];
+                if (node?.parentId) {
+                    selectedId = node.parentId;
+                    update();
+                    scrollToNode(selectedId);
+                }
+            }
+        } else if (e.key === 'ArrowRight' && !e.ctrlKey && !e.shiftKey) {
+            e.preventDefault();
+            if (selectedId) {
+                const node = map.nodes[selectedId];
+                if (node?.children?.length > 0) {
+                    selectedId = node.children[0];
+                    update();
+                    scrollToNode(selectedId);
+                }
+            }
+        } else if (e.key === 'ArrowUp' && !e.ctrlKey && !e.shiftKey) {
+            e.preventDefault();
+            if (selectedId) {
+                const node = map.nodes[selectedId];
+                const parent = node?.parentId ? map.nodes[node.parentId] : null;
+                if (parent?.children) {
+                    const idx = parent.children.indexOf(selectedId);
+                    if (idx > 0) {
+                        selectedId = parent.children[idx - 1];
+                        update();
+                        scrollToNode(selectedId);
+                    }
+                }
+            }
+        } else if (e.key === 'ArrowDown' && !e.ctrlKey && !e.shiftKey) {
+            e.preventDefault();
+            if (selectedId) {
+                const node = map.nodes[selectedId];
+                const parent = node?.parentId ? map.nodes[node.parentId] : null;
+                if (parent?.children) {
+                    const idx = parent.children.indexOf(selectedId);
+                    if (idx < parent.children.length - 1) {
+                        selectedId = parent.children[idx + 1];
+                        update();
+                        scrollToNode(selectedId);
+                    }
+                }
+            }
+        // ── Home = jump to root ──
+        } else if (e.key === 'Home') {
+            e.preventDefault();
+            selectedId = map.rootId;
+            centerOnRoot();
+            update();
+        // ── Zoom shortcuts ──
+        } else if ((e.key === '=' || e.key === '+') && e.ctrlKey) {
+            e.preventDefault();
+            zoomBy(1.2);
+        } else if (e.key === '-' && e.ctrlKey && !e.shiftKey) {
+            e.preventDefault();
+            zoomBy(1 / 1.2);
+        } else if (e.key === '0' && e.ctrlKey) {
+            e.preventDefault();
+            pan.scale = 1;
+            update();
+        // ── N = open note ──
+        } else if (e.key === 'n' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            e.preventDefault();
+            if (selectedId) openNoteModal(selectedId);
         } else if (e.key === 'F' && !e.ctrlKey && !e.metaKey && !e.altKey) {
             e.preventDefault();
             const svgW = svgElement.clientWidth;
@@ -852,6 +1061,33 @@ function wireUI() {
             e.preventDefault();
         }
     });
+
+    // ── Command palette actions ──
+    initCommandPalette([
+        { label: 'Ajouter un enfant', shortcut: 'Tab', fn: () => addChildBtn?.onclick() },
+        { label: 'Ajouter un frère', shortcut: 'Entrée', fn: () => addSiblingBtn?.onclick() },
+        { label: 'Supprimer le nœud', shortcut: 'Suppr', fn: () => deleteBtn?.onclick() },
+        { label: 'Modifier le texte', shortcut: 'F2', fn: () => startEditing(selectedId) },
+        { label: 'Ouvrir / créer une note', shortcut: 'N', fn: () => { if (selectedId) openNoteModal(selectedId); } },
+        { label: 'Plier / déplier', shortcut: 'Espace', fn: () => { if (selectedId && toggleCollapse(map, selectedId)) { markLayoutDirty(); update(); markMapChanged(); } } },
+        { label: 'Aller à la racine', shortcut: 'Home', fn: () => { selectedId = map?.rootId; centerOnRoot(); update(); } },
+        { label: 'Adapter à l\'écran', shortcut: '', fn: () => fitToScreen() },
+        { label: 'Mode focus', shortcut: 'Ctrl+Shift+F', fn: () => { if (focusRootId) exitFocusMode(); else if (selectedId) enterFocusMode(selectedId); } },
+        { label: 'Rechercher', shortcut: 'Ctrl+F', fn: () => openSearch() },
+        { label: 'Annuler', shortcut: 'Ctrl+Z', fn: () => undo() },
+        { label: 'Rétablir', shortcut: 'Ctrl+Y', fn: () => redo() },
+        { label: 'Nouvelle carte', shortcut: '', fn: () => showTemplatePicker() },
+        { label: 'Ouvrir une carte', shortcut: '', fn: () => loadBtn?.click() },
+        { label: 'Exporter en Markdown', shortcut: '', fn: () => { if (map) exportMarkdown(map); } },
+        { label: 'Exporter en PNG', shortcut: '', fn: () => { if (map) exportImage(map, viewport); } },
+        { label: 'Exporter en PDF', shortcut: '', fn: () => { if (map) exportPdf(map, viewport); } },
+        { label: 'Vue Plan / Outline', shortcut: '', fn: () => toggleOutline() },
+        { label: 'Configuration', shortcut: '', fn: () => configBtn?.click() },
+        { label: 'Zoom +', shortcut: 'Ctrl+=', fn: () => zoomBy(1.2) },
+        { label: 'Zoom -', shortcut: 'Ctrl+-', fn: () => zoomBy(1/1.2) },
+        { label: 'Zoom 100%', shortcut: 'Ctrl+0', fn: () => { pan.scale = 1; update(); } },
+        { label: 'Ajouter un cadre', shortcut: 'F', fn: () => { const svgW = svgElement.clientWidth; const svgH = svgElement.clientHeight; const cx = (svgW/2-pan.x)/pan.scale; const cy = (svgH/2-pan.y)/pan.scale; const frame = addFrame(map,cx-200,cy-150,400,300); selectFrame(frame.id); update(); markMapChanged(); } },
+    ]);
 }
 
 let isPanning = false;
@@ -864,7 +1100,7 @@ function showApp() {
 function ensureRemoteEnabled({ silent = false } = {}) {
     if (remoteAvailable) return true;
     if (!silent && remoteDisabledMessage) {
-        alert(remoteDisabledMessage);
+        showToast(remoteDisabledMessage, 'error');
     }
     return false;
 }
@@ -1123,6 +1359,157 @@ function updateTagFilterHighlights() {
     });
 }
 
+// ── Focus mode ──
+function enterFocusMode(nodeId) {
+    if (!map || !map.nodes[nodeId]) return;
+    focusRootId = nodeId;
+    applyFocusMode();
+    fitToScreen();
+    showToast('Mode focus activé (Escape pour quitter)');
+}
+
+function exitFocusMode() {
+    focusRootId = null;
+    // Remove dimming from all nodes
+    document.querySelectorAll('.node.focus-dimmed').forEach(el => el.classList.remove('focus-dimmed'));
+    document.querySelectorAll('.link.focus-dimmed').forEach(el => el.classList.remove('focus-dimmed'));
+    update();
+    showToast('Mode focus désactivé');
+}
+
+function applyFocusMode() {
+    if (!focusRootId || !map) return;
+    // Collect all descendant IDs
+    const visible = new Set();
+    function collect(id) {
+        visible.add(id);
+        const n = map.nodes[id];
+        if (n?.children) n.children.forEach(collect);
+    }
+    collect(focusRootId);
+    // Dim non-visible nodes
+    document.querySelectorAll('.node[data-id]').forEach(el => {
+        el.classList.toggle('focus-dimmed', !visible.has(el.dataset.id));
+    });
+    // Dim non-visible links
+    document.querySelectorAll('.link').forEach(el => {
+        const fromId = el.dataset?.from;
+        const toId = el.dataset?.to;
+        el.classList.toggle('focus-dimmed', !(fromId && visible.has(fromId) && toId && visible.has(toId)));
+    });
+}
+
+// ── Minimap ──
+function updateMinimap() {
+    const canvas = document.getElementById('minimap');
+    if (!canvas || !map) return;
+    const ctx = canvas.getContext('2d');
+    const cw = canvas.width, ch = canvas.height;
+    ctx.clearRect(0, 0, cw, ch);
+
+    const nodes = Object.values(map.nodes);
+    if (nodes.length === 0) return;
+
+    // Compute bounding box
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    nodes.forEach(n => {
+        const nx = n.x ?? n.fx ?? 0;
+        const ny = n.y ?? n.fy ?? 0;
+        const nw = n.w || 80;
+        const nh = n.h || 30;
+        if (nx < minX) minX = nx;
+        if (ny < minY) minY = ny;
+        if (nx + nw > maxX) maxX = nx + nw;
+        if (ny + nh > maxY) maxY = ny + nh;
+    });
+
+    const padding = 20;
+    const bw = maxX - minX + padding * 2;
+    const bh = maxY - minY + padding * 2;
+    const scale = Math.min(cw / bw, ch / bh);
+
+    const ox = (cw - bw * scale) / 2 - (minX - padding) * scale;
+    const oy = (ch - bh * scale) / 2 - (minY - padding) * scale;
+
+    // Draw nodes as small rects
+    nodes.forEach(n => {
+        const nx = (n.x ?? n.fx ?? 0) * scale + ox;
+        const ny = (n.y ?? n.fy ?? 0) * scale + oy;
+        const nw = Math.max(2, (n.w || 80) * scale);
+        const nh = Math.max(2, (n.h || 30) * scale);
+        ctx.fillStyle = n.id === selectedId ? 'var(--accent, #d4873f)' : (n.color || '#ccc');
+        ctx.globalAlpha = focusRootId && !isDescendantOf(n.id, focusRootId) ? 0.15 : 0.7;
+        ctx.fillRect(nx, ny, nw, nh);
+    });
+    ctx.globalAlpha = 1;
+
+    // Draw viewport rectangle
+    if (svgElement) {
+        const vw = svgElement.clientWidth;
+        const vh = svgElement.clientHeight;
+        const vx = (-pan.x / pan.scale) * scale + ox;
+        const vy = (-pan.y / pan.scale) * scale + oy;
+        const vw2 = (vw / pan.scale) * scale;
+        const vh2 = (vh / pan.scale) * scale;
+        ctx.strokeStyle = 'rgba(212,135,63,0.7)';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(vx, vy, vw2, vh2);
+    }
+
+    // Store transform for click-to-navigate
+    canvas._minimapTransform = { scale, ox, oy, minX, minY, padding };
+}
+
+function isDescendantOf(nodeId, ancestorId) {
+    if (nodeId === ancestorId) return true;
+    const node = map?.nodes[nodeId];
+    if (!node?.parentId) return false;
+    return isDescendantOf(node.parentId, ancestorId);
+}
+
+// Minimap click-to-navigate
+document.getElementById('minimap')?.addEventListener('click', e => {
+    const canvas = e.target;
+    const t = canvas._minimapTransform;
+    if (!t || !svgElement) return;
+    const rect = canvas.getBoundingClientRect();
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+    // Convert minimap coords to map coords
+    const mapX = (cx - t.ox) / t.scale;
+    const mapY = (cy - t.oy) / t.scale;
+    // Center viewport on this point
+    pan.x = svgElement.clientWidth / 2 - mapX * pan.scale;
+    pan.y = svgElement.clientHeight / 2 - mapY * pan.scale;
+    update();
+});
+
+function scrollToNode(id) {
+    if (!map || !svgElement) return;
+    const node = map.nodes[id];
+    if (!node) return;
+    const cx = (node.x + (node.w || 0) / 2) * pan.scale + pan.x;
+    const cy = (node.y + (node.h || 0) / 2) * pan.scale + pan.y;
+    const vw = svgElement.clientWidth;
+    const vh = svgElement.clientHeight;
+    const margin = 80;
+    if (cx < margin || cx > vw - margin || cy < margin || cy > vh - margin) {
+        pan.x = vw / 2 - (node.x + (node.w || 0) / 2) * pan.scale;
+        pan.y = vh / 2 - (node.y + (node.h || 0) / 2) * pan.scale;
+    }
+}
+
+function zoomBy(factor) {
+    if (!svgElement) return;
+    const cx = svgElement.clientWidth / 2;
+    const cy = svgElement.clientHeight / 2;
+    const newScale = Math.min(5, Math.max(0.1, pan.scale * factor));
+    pan.x = cx - (cx - pan.x) * (newScale / pan.scale);
+    pan.y = cy - (cy - pan.y) * (newScale / pan.scale);
+    pan.scale = newScale;
+    update();
+}
+
 function update() {
     if (!map) return;
     ensureSettings(map);
@@ -1163,6 +1550,9 @@ function update() {
             el.classList.toggle('multi-selected', multiSelected.has(el.dataset.id));
         });
     }
+    updateHud();
+    updateMinimap();
+    if (focusRootId) applyFocusMode();
 }
 
 function scheduleUpdate() {
@@ -1739,7 +2129,7 @@ async function openHistory() {
             restoreBtn.onclick = async () => {
                 if (!confirm(`Restaurer la version du ${dateStr} ?`)) return;
                 const r = await fetch(`/api/maps/${map.id}/versions/${v.id}`);
-                if (!r.ok) { alert('Erreur'); return; }
+                if (!r.ok) { showToast('Erreur', 'error'); return; }
                 const data = await r.json();
                 pushUndo();
                 const restored = data.map;
@@ -1987,6 +2377,45 @@ function showFrameContextMenu(x, y, frameId) {
     }, 0);
 }
 
+function showTemplatePicker() {
+    document.querySelectorAll('.template-picker').forEach(m => m.remove());
+    const picker = document.createElement('div');
+    picker.className = 'context-menu template-picker';
+    const header = document.createElement('div');
+    header.className = 'move-menu-header';
+    header.textContent = 'Nouvelle carte';
+    picker.appendChild(header);
+    getTemplates().forEach((tmpl, i) => {
+        const btn = document.createElement('button');
+        btn.textContent = `${tmpl.icon} ${tmpl.name}`;
+        btn.onclick = () => {
+            picker.remove();
+            const built = buildFromTemplate(i);
+            const fresh = built || createEmptyMap();
+            ensureSettings(fresh);
+            markLayoutDirty();
+            setCurrentMap(fresh, { center: true, remember: false });
+            markMapChanged();
+            startEditing(selectedId);
+        };
+        picker.appendChild(btn);
+    });
+    // Position under the "Nouveau" button
+    const btnRect = newBtn.getBoundingClientRect();
+    picker.style.position = 'fixed';
+    picker.style.top = (btnRect.bottom + 4) + 'px';
+    picker.style.left = btnRect.left + 'px';
+    document.body.appendChild(picker);
+    setTimeout(() => {
+        document.addEventListener('click', function close(e) {
+            if (!picker.contains(e.target)) {
+                picker.remove();
+                document.removeEventListener('click', close);
+            }
+        });
+    }, 0);
+}
+
 function showNodeContextMenu(x, y, nodeId) {
     document.querySelectorAll('.node-context-menu').forEach(m => m.remove());
     const node = map.nodes[nodeId];
@@ -2024,6 +2453,31 @@ function showNodeContextMenu(x, y, nodeId) {
         imageInput.click();
     };
     menu.appendChild(imgBtn);
+
+    // Color swatches
+    const colorSep = document.createElement('div');
+    colorSep.className = 'context-menu-sep';
+    menu.appendChild(colorSep);
+    const colorHeader = document.createElement('div');
+    colorHeader.className = 'move-menu-header';
+    colorHeader.textContent = 'Couleur';
+    menu.appendChild(colorHeader);
+    const colorRow = document.createElement('div');
+    colorRow.style.cssText = 'display:flex;gap:4px;padding:4px 8px;flex-wrap:wrap;';
+    const nodeColors = ['#fef3c7','#fed7aa','#fecaca','#ddd6fe','#bfdbfe','#bbf7d0','#e5e7eb','#fde68a','#c4b5fd','#a5f3fc'];
+    nodeColors.forEach(color => {
+        const swatch = document.createElement('span');
+        swatch.style.cssText = `display:inline-block;width:20px;height:20px;border-radius:4px;cursor:pointer;border:2px solid ${node.color === color ? 'var(--accent)' : 'transparent'};background:${color};`;
+        swatch.addEventListener('click', () => {
+            menu.remove();
+            pushUndo();
+            map.nodes[nodeId].color = color;
+            update();
+            markMapChanged();
+        });
+        colorRow.appendChild(swatch);
+    });
+    menu.appendChild(colorRow);
 
     // Expand/collapse children (only if node has children)
     if (node.children && node.children.length > 0) {
@@ -2723,7 +3177,7 @@ async function loadMapById(id, { silentError = false } = {}) {
     } catch (err) {
         console.error(err);
         if (!silentError) {
-            alert(err.message || 'Impossible de charger la carte.');
+            showToast(err.message || 'Impossible de charger la carte.', 'error');
         }
         if (isNetworkError(err)) {
             disableRemote('Impossible de contacter l\'API distante.');
@@ -2902,6 +3356,9 @@ function updateSaveStatus() {
         return;
     }
     saveStatusEl.textContent = 'Toutes les modifications sont sauvegardées';
+    saveStatusEl.classList.remove('save-confirmed');
+    void saveStatusEl.offsetWidth; // force reflow
+    saveStatusEl.classList.add('save-confirmed');
 }
 
 function isNetworkError(err) {

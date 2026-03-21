@@ -198,13 +198,25 @@ function renderMobileOutline() {
         _container.appendChild(buildNoteAccordion(focusId, focusBody, true));
     }
 
-    // ── Children list ──
+    // ── Unified list: tree children + free nodes as peers ──
     const children = focusNode.children || [];
-    if (children.length > 0) {
+
+    // Collect free nodes (only at root level)
+    const freeNodes = (focusId === _map.rootId)
+        ? Object.values(_map.nodes).filter(n =>
+            n.placement === 'free' || (n.fx != null && n.id !== _map.rootId && !hasTreeParent(n)))
+        : [];
+
+    const allItems = [
+        ...children.map(id => ({ id, type: 'tree' })),
+        ...freeNodes.map(n => ({ id: n.id, type: 'free' }))
+    ];
+
+    if (allItems.length > 0) {
         const list = document.createElement('ul');
         list.className = 'outline-tree mobile-tree';
 
-        children.forEach(childId => {
+        allItems.forEach(({ id: childId, type }) => {
             const child = _map.nodes[childId];
             if (!child) return;
 
@@ -218,12 +230,14 @@ function renderMobileOutline() {
             const dot = document.createElement('span');
             dot.className = 'outline-dot';
             dot.style.background = child.color || '#ccc';
+            if (type === 'free') dot.style.borderRadius = '3px';
             row.appendChild(dot);
 
             // Text
             const text = document.createElement('span');
             text.className = 'outline-item-text';
             text.textContent = child.text || 'Sans titre';
+            if (child.nodeType === 'card') text.style.fontWeight = '600';
             row.appendChild(text);
 
             appendTagDots(row, child);
@@ -248,16 +262,32 @@ function renderMobileOutline() {
                 const noteIcon = document.createElement('span');
                 noteIcon.className = 'mobile-note-icon';
                 noteIcon.textContent = '📝';
+                // Tap note icon to toggle accordion directly
+                noteIcon.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const accordion = li.querySelector('.mobile-note-accordion');
+                    if (accordion) {
+                        const isOpen = accordion.classList.toggle('open');
+                        const arrow = accordion.querySelector('.mobile-note-arrow');
+                        if (arrow) arrow.textContent = isOpen ? '▾' : '▸';
+                    }
+                });
                 row.appendChild(noteIcon);
             }
 
-            // Tap to drill down if has children, otherwise just select
+            // Tap behavior: drill down if has children, toggle note if leaf with note
             row.addEventListener('click', () => {
                 if (childChildren.length > 0) {
                     _drillStack.push(childId);
                     renderOutline();
-                } else if (_callbacks?.onSelectNode) {
-                    _callbacks.onSelectNode(childId);
+                } else if (childBody) {
+                    // Leaf with note: toggle the note accordion
+                    const accordion = li.querySelector('.mobile-note-accordion');
+                    if (accordion) {
+                        const isOpen = accordion.classList.toggle('open');
+                        const arrow = accordion.querySelector('.mobile-note-arrow');
+                        if (arrow) arrow.textContent = isOpen ? '▾' : '▸';
+                    }
                 }
             });
 
@@ -277,53 +307,6 @@ function renderMobileOutline() {
         empty.className = 'mobile-empty';
         empty.textContent = 'Aucun sous-nœud';
         _container.appendChild(empty);
-    }
-
-    // Free nodes at root level only
-    if (focusId === _map.rootId) {
-        const freeNodes = Object.values(_map.nodes).filter(n =>
-            n.placement === 'free' || (n.fx != null && n.id !== _map.rootId && !hasTreeParent(n))
-        );
-        if (freeNodes.length > 0) {
-            const sep = document.createElement('div');
-            sep.className = 'mobile-section-sep';
-            sep.textContent = 'Notes libres';
-            _container.appendChild(sep);
-
-            const freeList = document.createElement('ul');
-            freeList.className = 'outline-tree mobile-tree';
-            freeNodes.forEach(node => {
-                const li = document.createElement('li');
-                li.className = 'outline-item mobile-item';
-                const row = document.createElement('div');
-                row.className = 'outline-item-row mobile-row';
-
-                const dot = document.createElement('span');
-                dot.className = 'outline-dot';
-                dot.style.background = node.color || '#fef3c7';
-                dot.style.borderRadius = '3px';
-                row.appendChild(dot);
-
-                const text = document.createElement('span');
-                text.className = 'outline-item-text';
-                text.textContent = node.text || 'Sans titre';
-                row.appendChild(text);
-
-                row.addEventListener('click', () => {
-                    if (_callbacks?.onSelectNode) _callbacks.onSelectNode(node.id);
-                });
-
-                li.appendChild(row);
-
-                const body = node.body || node.note;
-                if (body) {
-                    li.appendChild(buildNoteAccordion(node.id, body, false));
-                }
-
-                freeList.appendChild(li);
-            });
-            _container.appendChild(freeList);
-        }
     }
 
     // Quick-add bar

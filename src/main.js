@@ -2555,7 +2555,6 @@ function showNodeContextMenu(x, y, nodeId) {
     }
 
     // Task section
-    const node = map.nodes[nodeId];
     const taskCount = node?.tasks?.length || 0;
     const taskBtn = document.createElement('button');
     taskBtn.innerHTML = taskCount > 0

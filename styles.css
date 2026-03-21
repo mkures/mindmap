@@ -195,6 +195,16 @@ body, html {
     transform: scale(0.97);
 }
 
+#toolbar button:disabled {
+    opacity: 0.35;
+    cursor: default;
+    pointer-events: none;
+}
+
+#toolbar button.hidden {
+    display: none;
+}
+
 /* Divider between button groups */
 #toolbar .tb-sep {
     width: 1px;
@@ -202,6 +212,48 @@ body, html {
     background: var(--border);
     margin: 0 4px;
     flex-shrink: 0;
+}
+
+/* Export dropdown */
+.tb-dropdown {
+    position: relative;
+    display: inline-flex;
+}
+.tb-dropdown-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 1000;
+    min-width: 160px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    padding: 4px 0;
+    margin-top: 2px;
+}
+.tb-dropdown-menu.open {
+    display: block;
+}
+.tb-dropdown-menu button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 6px 14px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.tb-dropdown-menu button:hover {
+    color: var(--text);
+    background: var(--surface-hover);
 }
 
 /* ---- SVG Canvas ---- */

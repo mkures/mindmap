@@ -81,6 +81,10 @@ const logoutBtn = document.getElementById('logoutBtn');
 const shareBtn = document.getElementById('shareBtn');
 const outlineBtn = document.getElementById('outlineBtn');
 const outlineView = document.getElementById('outlineView');
+const undoBtn = document.getElementById('undoBtn');
+const redoBtn = document.getElementById('redoBtn');
+const exportDropBtn = document.getElementById('exportDropBtn');
+const exportDropMenu = document.getElementById('exportDropMenu');
 const outlineContent = document.getElementById('outlineContent');
 
 let currentUser = null;
@@ -171,6 +175,7 @@ async function init() {
     updateSaveStatus();
     wireUI();
     updateRemoteUIState();
+    updateUndoRedoButtons();
     showApp();
     await loadInitialMap();
 }
@@ -509,6 +514,31 @@ function wireUI() {
                 modalBackdrop.classList.add('hidden');
             }
         };
+    }
+
+    // Undo / Redo buttons
+    if (undoBtn) {
+        undoBtn.onclick = () => undo();
+    }
+    if (redoBtn) {
+        redoBtn.onclick = () => redo();
+    }
+
+    // Export dropdown
+    if (exportDropBtn && exportDropMenu) {
+        exportDropBtn.onclick = (e) => {
+            e.stopPropagation();
+            exportDropMenu.classList.toggle('open');
+        };
+        document.addEventListener('mousedown', (e) => {
+            if (exportDropMenu.classList.contains('open') && !exportDropMenu.contains(e.target) && e.target !== exportDropBtn) {
+                exportDropMenu.classList.remove('open');
+            }
+        });
+        // Close dropdown after any export button click
+        exportDropMenu.addEventListener('click', () => {
+            exportDropMenu.classList.remove('open');
+        });
     }
 
     if (configCancelBtn) {
@@ -1227,6 +1257,11 @@ function setCurrentMap(newMap, { center = true, remember = true } = {}) {
 }
 
 // ── Undo / Redo ─────────────────────────────────────────────
+function updateUndoRedoButtons() {
+    if (undoBtn) undoBtn.disabled = undoStack.length === 0;
+    if (redoBtn) redoBtn.disabled = redoStack.length === 0;
+}
+
 function pushUndo() {
     if (!map) return;
     const snapshot = JSON.parse(JSON.stringify(map));
@@ -1237,6 +1272,7 @@ function pushUndo() {
     undoStack.push(JSON.stringify(snapshot));
     if (undoStack.length > MAX_UNDO) undoStack.shift();
     redoStack = [];
+    updateUndoRedoButtons();
 }
 
 function undo() {
@@ -1252,6 +1288,7 @@ function undo() {
     clearRenderCache();
     update();
     markMapChanged();
+    updateUndoRedoButtons();
 }
 
 function redo() {
@@ -1267,6 +1304,7 @@ function redo() {
     clearRenderCache();
     update();
     markMapChanged();
+    updateUndoRedoButtons();
 }
 
 // ── Search ──────────────────────────────────────────────────

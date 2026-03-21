@@ -349,7 +349,11 @@ function buildNoteAccordion(nodeId, body, startOpen) {
 
     const content = document.createElement('div');
     content.className = 'mobile-note-content';
-    content.textContent = body;
+    if (typeof marked !== 'undefined' && marked.parse) {
+        content.innerHTML = marked.parse(body, { breaks: true });
+    } else {
+        content.textContent = body;
+    }
 
     // Edit note button
     const editNoteBtn = document.createElement('button');

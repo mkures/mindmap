@@ -494,8 +494,8 @@ function renderFrames(map) {
 
         const titleEl = g.querySelector('.frame-title');
         titleEl.setAttribute('x', '12');
-        titleEl.setAttribute('y', '-10');
-        titleEl.setAttribute('font-size', '13');
+        titleEl.setAttribute('y', '-14');
+        titleEl.setAttribute('font-size', '26');
         titleEl.setAttribute('font-weight', '600');
         titleEl.setAttribute('fill', stroke);
         titleEl.textContent = frame.title || 'Zone';

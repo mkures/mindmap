@@ -216,14 +216,21 @@ export function layout(map) {
     });
 
     if (isFinite(minX)) {
-        const lo = map.layoutOffset || { x: 0, y: 0 };
-        const offsetX = -(minX + maxX) / 2 + lo.x;
-        const offsetY = -(minY + maxY) / 2 + lo.y;
-        Object.values(map.nodes).forEach(n => {
-            if (n.placement === 'free') return;
-            n.x += offsetX;
-            n.y += offsetY;
-        });
+        // Initialize root anchor if not yet set (first layout or old map)
+        if (root && root.fx == null) {
+            root.fx = -(minX + maxX) / 2;
+            root.fy = -(minY + maxY) / 2;
+        }
+        // Use root anchor as offset — tree moves as a unit with root.fx/fy
+        if (root) {
+            const offsetX = root.fx;
+            const offsetY = root.fy;
+            Object.values(map.nodes).forEach(n => {
+                if (n.placement === 'free') return;
+                n.x += offsetX;
+                n.y += offsetY;
+            });
+        }
     }
 
     // Layout free nodes — each free root is a mini-tree anchored at (fx, fy)

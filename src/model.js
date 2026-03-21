@@ -398,22 +398,11 @@ export function getNodesInFrame(map, frameId) {
     const frame = (map.frames || []).find(f => f.id === frameId);
     if (!frame) return [];
     return Object.values(map.nodes).filter(node => {
-        if (node.placement !== 'free') return false;
-        const cx = (node.fx ?? node.x ?? 0) + (node.w || 0) / 2;
-        const cy = (node.fy ?? node.y ?? 0) + (node.h || 0) / 2;
+        // Only nodes with fx/fy (free bubbles + root with anchor)
+        if (node.fx == null) return false;
+        const cx = node.fx + (node.w || 0) / 2;
+        const cy = node.fy + (node.h || 0) / 2;
         return cx >= frame.x && cx <= frame.x + frame.w
             && cy >= frame.y && cy <= frame.y + frame.h;
     });
-}
-
-// Check if the main tree root is inside a frame's bounds
-export function isRootInFrame(map, frameId) {
-    const frame = (map.frames || []).find(f => f.id === frameId);
-    if (!frame) return false;
-    const root = map.nodes[map.rootId];
-    if (!root) return false;
-    const cx = (root.x ?? 0) + (root.w || 0) / 2;
-    const cy = (root.y ?? 0) + (root.h || 0) / 2;
-    return cx >= frame.x && cx <= frame.x + frame.w
-        && cy >= frame.y && cy <= frame.y + frame.h;
 }

@@ -23,8 +23,7 @@ import {
     addFrame,
     deleteFrame,
     updateFrame,
-    getNodesInFrame,
-    isRootInFrame
+    getNodesInFrame
 } from './model.js';
 import { layout } from './layout.js';
 import { render, clearRenderCache, setSelectedLinkId, setSelectedFrameId } from './render.js';
@@ -1216,9 +1215,8 @@ function startNodeDrag(nodeEl, event) {
         return;
     }
 
-    // Free nodes (bubbles)
-    if (node.placement === 'free') {
-        // Free drag
+    // Free nodes (bubbles) and root node — drag by updating fx/fy
+    if (node.placement === 'free' || id === map.rootId) {
         const clickSvgX = (event.clientX - svgRect.left - pan.x) / pan.scale;
         const clickSvgY = (event.clientY - svgRect.top - pan.y) / pan.scale;
         dragState = {
@@ -1233,9 +1231,6 @@ function startNodeDrag(nodeEl, event) {
         };
         return;
     }
-
-    // Tree node → reparent drag (existing behavior)
-    if (id === map.rootId) return;
     const rect = nodeEl.getBoundingClientRect();
     dragState = {
         id,
@@ -1275,15 +1270,12 @@ function startFrameInteraction(frameId, event) {
         return;
     }
 
-    // Move mode — capture contained free nodes and their offsets from frame origin
+    // Move mode — capture contained nodes (free bubbles + root) and their offsets
     const containedNodes = getNodesInFrame(map, frameId).map(node => ({
         id: node.id,
         dx: (node.fx ?? node.x ?? 0) - frame.x,
         dy: (node.fy ?? node.y ?? 0) - frame.y,
     }));
-    // Check if this frame contains the main tree root (separate from free nodes)
-    const hasTreeRoot = isRootInFrame(map, frameId);
-    const lo = map.layoutOffset || { x: 0, y: 0 };
     dragState = {
         mode: 'framemove',
         id: frameId,
@@ -1292,10 +1284,6 @@ function startFrameInteraction(frameId, event) {
         startX: event.clientX,
         startY: event.clientY,
         containedNodes,
-        hasTreeRoot,
-        startLayoutOffset: { x: lo.x, y: lo.y },
-        startFrameX: frame.x,
-        startFrameY: frame.y,
         hasMoved: false,
     };
 }
@@ -1365,20 +1353,11 @@ function updateNodeDrag(event) {
         if (frame) {
             frame.x = svgX - dragState.svgOffsetX;
             frame.y = svgY - dragState.svgOffsetY;
-            // Move free nodes with the frame
+            // Move all contained nodes (free bubbles + root) with the frame
             dragState.containedNodes.forEach(({ id, dx, dy }) => {
                 const node = map.nodes[id];
                 if (node) { node.fx = frame.x + dx; node.fy = frame.y + dy; }
             });
-            // Move tree nodes via layout offset
-            if (dragState.hasTreeRoot) {
-                const deltaX = frame.x - dragState.startFrameX;
-                const deltaY = frame.y - dragState.startFrameY;
-                map.layoutOffset = {
-                    x: dragState.startLayoutOffset.x + deltaX,
-                    y: dragState.startLayoutOffset.y + deltaY,
-                };
-            }
         }
         markLayoutDirty();
         scheduleUpdate();

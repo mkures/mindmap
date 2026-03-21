@@ -72,6 +72,7 @@ function generateNodeId(map) {
 }
 
 export function addChild(map, parentId) {
+    if (!map.nodes[parentId]) return null;
     ensureSettings(map);
     const id = generateNodeId(map);
     map.nodes[id] = { id, parentId, text: 'Node', children: [], color: map.nodes[parentId] ? map.nodes[parentId].color : map.settings.levelColors[0] };
@@ -81,6 +82,7 @@ export function addChild(map, parentId) {
 }
 
 export function addSibling(map, nodeId) {
+    if (!map.nodes[nodeId]) return null;
     const parentId = map.nodes[nodeId].parentId;
     if (parentId === null) return null;
     return addChild(map, parentId);
@@ -326,7 +328,7 @@ export function addLink(map, fromId, toId, label = '') {
     if (fromId === toId) return null;
     // Avoid duplicate
     if (map.links.some(l => l.from === fromId && l.to === toId)) return null;
-    const id = 'l' + Date.now();
+    const id = 'l' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
     const link = { id, from: fromId, to: toId, label, color: '#94a3b8', style: 'dashed' };
     map.links.push(link);
     map.updatedAt = Date.now();
@@ -343,7 +345,7 @@ export function deleteLink(map, linkId) {
 // Tag definitions (in settings.tags)
 export function addTagDef(map, name, color) {
     ensureSettings(map);
-    const id = 'tag-' + Date.now();
+    const id = 'tag-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
     map.settings.tags.push({ id, name, color: color || '#94a3b8' });
     map.updatedAt = Date.now();
     return id;
@@ -372,7 +374,7 @@ export function toggleNodeTag(map, nodeId, tagId) {
 
 export function addFrame(map, x, y, w = 400, h = 300) {
     if (!map.frames) map.frames = [];
-    const id = 'f' + Date.now();
+    const id = 'f' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
     const frame = { id, title: 'Zone', color: '#dbeafe', x, y, w, h };
     map.frames.push(frame);
     map.updatedAt = Date.now();
@@ -389,6 +391,7 @@ export function updateFrame(map, frameId, updates) {
     if (!map.frames) return null;
     const frame = map.frames.find(f => f.id === frameId);
     if (!frame) return null;
+    delete updates.id;
     Object.assign(frame, updates);
     map.updatedAt = Date.now();
     return frame;

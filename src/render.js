@@ -72,6 +72,7 @@ export function render(map, svg, selectedId) {
         freeLinkElements.clear();
         frameElements.clear();
         frameOverlayElements.clear();
+        arrowMarkerCreated = false;
     }
 
     // Render frames (background layer)
@@ -217,6 +218,7 @@ function updateBubbleElement(g, node, settings, isSelected) {
             g.insertBefore(img, g.querySelector('text'));
         }
         img.setAttribute('href', node.media.dataUrl);
+        img.setAttribute('data-original-url', node.media.originalDataUrl || node.media.dataUrl);
         img.setAttribute('width', node.media.width);
         img.setAttribute('height', node.media.height);
         img.setAttribute('x', 5);
@@ -227,7 +229,7 @@ function updateBubbleElement(g, node, settings, isSelected) {
             img.addEventListener('click', e => {
                 e.stopPropagation();
                 document.dispatchEvent(new CustomEvent('mindmap:image-click', {
-                    detail: { dataUrl: node.media.originalDataUrl || node.media.dataUrl }
+                    detail: { dataUrl: img.getAttribute('data-original-url') || img.getAttribute('href') }
                 }));
             });
         }

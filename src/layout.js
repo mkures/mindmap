@@ -71,7 +71,7 @@ export function layout(map) {
         node.w = Math.max(MIN_NODE_W, contentWidth + PADDING + mediaWidth);
 
         // Wrap text and calculate height
-        const wrapWidth = MAX_NODE_W - PADDING - mediaWidth;
+        const wrapWidth = Math.max(CHAR_WIDTH * 2, MAX_NODE_W - PADDING - mediaWidth);
         node._lines = wrapText(node.text, wrapWidth);
         const textHeight = node._lines.length * LINE_HEIGHT + 10;
         const mediaHeight = node.media ? node.media.height + 10 : 0;
@@ -114,7 +114,9 @@ export function layout(map) {
         node.depth = depth;
         node.direction = direction; // 'right' or 'left'
         const colorIndex = Math.min(depth, colors.length - 1);
-        node.color = colors[colorIndex] || colors[colors.length - 1] || '#ffffff';
+        if (!node.color) {
+            node.color = colors[colorIndex] || colors[colors.length - 1] || '#ffffff';
+        }
 
         // Calculate x based on direction
         if (depth === 0) {
@@ -165,14 +167,16 @@ export function layout(map) {
             // Auto-assign side to children that don't have one yet
             const unassigned = validChildren.filter(c => !map.nodes[c].side);
             if (unassigned.length > 0) {
-                const rightCount = validChildren.filter(c => map.nodes[c].side === 'right').length;
-                const leftCount = validChildren.filter(c => map.nodes[c].side === 'left').length;
+                let rightCount = validChildren.filter(c => map.nodes[c].side === 'right').length;
+                let leftCount = validChildren.filter(c => map.nodes[c].side === 'left').length;
                 unassigned.forEach(c => {
                     // Balance: assign to the side with fewer children
                     if (rightCount <= leftCount) {
                         map.nodes[c].side = 'right';
+                        rightCount++;
                     } else {
                         map.nodes[c].side = 'left';
+                        leftCount++;
                     }
                 });
             }
@@ -275,7 +279,9 @@ export function layout(map) {
             node.depth = depth;
             node.direction = 'right';
             const colorIndex = Math.min(depth, colors.length - 1);
-            node.color = colors[colorIndex] || colors[colors.length - 1] || '#ffffff';
+            if (!node.color) {
+                node.color = colors[colorIndex] || colors[colors.length - 1] || '#ffffff';
+            }
             if (depth === 0) {
                 node.x = 0;
             } else {

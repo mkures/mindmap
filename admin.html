@@ -150,23 +150,13 @@
                 info.appendChild(name);
                 info.appendChild(meta);
 
-                if (user.apiKey) {
+                if (user.hasApiKey) {
                     const keyRow = document.createElement('div');
                     keyRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin-top:2px;';
                     const keyCode = document.createElement('code');
-                    keyCode.style.cssText = 'font-size:11px;color:var(--text-secondary);background:var(--bg-secondary);padding:2px 6px;border-radius:4px;user-select:all;';
-                    keyCode.textContent = user.apiKey;
-                    const copyBtn = document.createElement('button');
-                    copyBtn.style.cssText = 'font-size:11px;padding:2px 6px;cursor:pointer;background:none;border:1px solid var(--border);border-radius:4px;color:var(--text-secondary);';
-                    copyBtn.textContent = 'Copier';
-                    copyBtn.onclick = (e) => {
-                        e.stopPropagation();
-                        navigator.clipboard.writeText(user.apiKey);
-                        copyBtn.textContent = 'Copie !';
-                        setTimeout(() => copyBtn.textContent = 'Copier', 1500);
-                    };
+                    keyCode.style.cssText = 'font-size:11px;color:var(--text-secondary);background:var(--bg-secondary);padding:2px 6px;border-radius:4px;';
+                    keyCode.textContent = 'Cle API active';
                     keyRow.appendChild(keyCode);
-                    keyRow.appendChild(copyBtn);
                     info.appendChild(keyRow);
                 }
 
@@ -175,12 +165,12 @@
 
                 const apiKeyBtn = document.createElement('button');
                 apiKeyBtn.className = 'admin-btn-outline';
-                apiKeyBtn.textContent = user.apiKey ? 'Regenerer cle' : 'Generer cle API';
+                apiKeyBtn.textContent = user.hasApiKey ? 'Regenerer cle' : 'Generer cle API';
                 apiKeyBtn.style.fontSize = '12px';
                 apiKeyBtn.onclick = () => manageApiKey(user);
                 actions.appendChild(apiKeyBtn);
 
-                if (user.apiKey) {
+                if (user.hasApiKey) {
                     const revokeBtn = document.createElement('button');
                     revokeBtn.className = 'admin-btn-danger';
                     revokeBtn.textContent = 'Revoquer';
@@ -262,13 +252,16 @@
         }
 
         async function manageApiKey(user) {
-            if (user.apiKey) {
+            if (user.hasApiKey) {
                 if (!confirm(`Regenerer la cle API pour "${user.displayName || user.username}" ?\nL'ancienne cle sera invalidee.`)) return;
             }
             try {
                 const resp = await fetch(`/api/admin/users/${user.id}/api-key`, { method: 'POST' });
                 const data = await resp.json();
                 if (resp.ok) {
+                    if (data.apiKey) {
+                        prompt('Nouvelle cle API (copiez-la maintenant, elle ne sera plus affichee) :', data.apiKey);
+                    }
                     loadUsers();
                 } else {
                     alert(data.error || 'Erreur');

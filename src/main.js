@@ -305,7 +305,7 @@ function wireUI() {
                     let w = img.width;
                     let h = img.height;
                     let scale = 1;
-                    if (w > h && w > max) scale = max / w;
+                    if (w >= h && w > max) scale = max / w;
                     else if (h > w && h > max) scale = max / h;
                     w = Math.round(w * scale);
                     h = Math.round(h * scale);
@@ -315,6 +315,7 @@ function wireUI() {
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, w, h);
                     const dataUrl = canvas.toDataURL('image/png');
+                    if (!selectedId) return;
                     setNodeImage(map, selectedId, {
                         kind: 'image',
                         dataUrl,
@@ -413,7 +414,12 @@ function wireUI() {
     if (historyCloseBtn) {
         historyCloseBtn.onclick = () => {
             document.getElementById('historyModal')?.classList.add('hidden');
-            modalBackdrop.classList.add('hidden');
+            const configHidden = document.getElementById('configModal')?.classList.contains('hidden') !== false;
+            const helpHidden = document.getElementById('helpModal')?.classList.contains('hidden') !== false;
+            const mapListHidden = document.getElementById('mapListModal')?.classList.contains('hidden') !== false;
+            if (configHidden && helpHidden && mapListHidden) {
+                modalBackdrop.classList.add('hidden');
+            }
         };
     }
 
@@ -744,6 +750,7 @@ function wireUI() {
         } else if (e.key === 'Delete' || e.key === 'Backspace') {
             e.preventDefault();
             if (selectedLinkId) {
+                pushUndo();
                 deleteLink(map, selectedLinkId);
                 selectLink(null);
                 update();
@@ -751,6 +758,7 @@ function wireUI() {
                 return;
             }
             if (selectedFrameId) {
+                pushUndo();
                 deleteFrame(map, selectedFrameId);
                 selectFrame(null);
                 update();
@@ -937,7 +945,12 @@ function setCurrentMap(newMap, { center = true, remember = true } = {}) {
 // ── Undo / Redo ─────────────────────────────────────────────
 function pushUndo() {
     if (!map) return;
-    undoStack.push(JSON.stringify(map));
+    const snapshot = JSON.parse(JSON.stringify(map));
+    // Strip large image data from undo snapshots
+    Object.values(snapshot.nodes || {}).forEach(n => {
+        if (n.media?.originalDataUrl) delete n.media.originalDataUrl;
+    });
+    undoStack.push(JSON.stringify(snapshot));
     if (undoStack.length > MAX_UNDO) undoStack.shift();
     redoStack = [];
 }
@@ -976,9 +989,9 @@ function redo() {
 function openSearch() {
     const bar = document.getElementById('searchBar');
     const input = document.getElementById('searchInput');
-    bar.classList.remove('hidden');
+    bar?.classList.remove('hidden');
     input.value = '';
-    input.focus();
+    input?.focus();
     searchMatches = [];
     searchIndex = -1;
     updateSearchHighlights();
@@ -986,7 +999,7 @@ function openSearch() {
 
 function closeSearch() {
     const bar = document.getElementById('searchBar');
-    bar.classList.add('hidden');
+    bar?.classList.add('hidden');
     searchMatches = [];
     searchIndex = -1;
     clearSearchHighlights();
@@ -1601,6 +1614,7 @@ function setDropTarget(nodeEl, id) {
 function ensureDragPreview() {
     if (!dragState || dragState.preview || !map) return;
     const { originEl, id, startX, startY } = dragState;
+    if (!map.nodes[id]) return;
     const rect = originEl.getBoundingClientRect();
     const preview = document.createElement('div');
     preview.className = 'drag-preview';
@@ -1679,11 +1693,14 @@ function positionEditor(bbox) {
 
 function finishEditing() {
     if (!editingInput || !map) return;
-    map.nodes[editingId].text = editingInput.value;
-    document.body.removeChild(editingInput);
+    const inp = editingInput;
+    const id = editingId;
     editingInput = null;
     editingId = null;
     editingOriginalText = null;
+    inp.removeEventListener('blur', finishEditing);
+    if (map.nodes[id]) map.nodes[id].text = inp.value;
+    if (document.body.contains(inp)) document.body.removeChild(inp);
     markLayoutDirty();
     update();
     markMapChanged();
@@ -2039,7 +2056,11 @@ function showNodeContextMenu(x, y, nodeId) {
         tags.forEach(tag => {
             const btn = document.createElement('button');
             const isActive = nodeTags.includes(tag.id);
-            btn.innerHTML = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${tag.color};margin-right:8px;vertical-align:middle;"></span>${tag.name}${isActive ? ' ✓' : ''}`;
+            const dot = document.createElement('span');
+            dot.style.cssText = 'display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px;vertical-align:middle;';
+            dot.style.background = tag.color;
+            btn.appendChild(dot);
+            btn.appendChild(document.createTextNode(tag.name + (isActive ? ' ✓' : '')));
             btn.onclick = () => {
                 menu.remove();
                 toggleNodeTag(map, nodeId, tag.id);
@@ -2174,8 +2195,13 @@ function openNoteViewModal(nodeId) {
     titleEl.textContent = node.text || 'Sans titre';
     modal.dataset.nodeId = nodeId;
     viewerEl.innerHTML = typeof marked !== 'undefined'
-        ? marked.parse(node.body, { breaks: true, gfm: true })
-        : `<pre>${node.body}</pre>`;
+        ? marked.parse(node.body, { breaks: true, gfm: true, sanitize: false })
+        : '';
+    if (typeof marked === 'undefined') {
+        const pre = document.createElement('pre');
+        pre.textContent = node.body;
+        viewerEl.appendChild(pre);
+    }
     if (editBtn) editBtn.onclick = () => { closeNoteViewModal(); openNoteModal(nodeId); };
     modal.classList.remove('hidden');
     modalBackdrop.classList.remove('hidden');
@@ -2239,7 +2265,10 @@ function openMapList() {
 
 function closeMapList() {
     mapListModal.classList.add('hidden');
-    if (configModal.classList.contains('hidden') && helpModal.classList.contains('hidden')) {
+    if (configModal.classList.contains('hidden') && helpModal.classList.contains('hidden')
+        && document.getElementById('noteModal')?.classList.contains('hidden') !== false
+        && document.getElementById('noteViewModal')?.classList.contains('hidden') !== false
+        && document.getElementById('historyModal')?.classList.contains('hidden') !== false) {
         modalBackdrop.classList.add('hidden');
     }
 }
@@ -2778,6 +2807,7 @@ async function runAutosave() {
     }
     cancelAutosaveTimer();
     autosaveInFlight = true;
+    const savingMap = map;
     autosavePending = false;
     lastSaveError = null;
     updateSaveStatus();
@@ -2810,14 +2840,14 @@ async function runAutosave() {
         }
         enableRemote();
         const data = await resp.json().catch(() => ({}));
-        if (data?.id) {
+        if (data?.id && map === savingMap) {
             map.id = data.id;
             localStorage.setItem(LAST_MAP_STORAGE_KEY, data.id);
         }
-        if (data?.title) {
+        if (data?.title && map === savingMap) {
             map.title = data.title;
         }
-        if (data?.updatedAt) {
+        if (data?.updatedAt && map === savingMap) {
             map.updatedAt = data.updatedAt;
         }
         update();

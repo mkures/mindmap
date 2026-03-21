@@ -6,7 +6,7 @@ import uuid
 import time
 import secrets
 from functools import wraps
-from flask import Flask, request, jsonify, send_from_directory, Response, session, redirect, url_for
+from flask import Flask, request, jsonify, send_from_directory, Response, session, redirect, url_for, after_this_request
 from werkzeug.security import generate_password_hash, check_password_hash
 
 # Force unbuffered output for Railway logs
@@ -21,6 +21,10 @@ DB_PATH = os.environ.get('DB_PATH', 'mindmap.db')
 ADMIN_USERNAME = os.environ.get('BASIC_AUTH_USERNAME', 'admin')
 ADMIN_PASSWORD = os.environ.get('BASIC_AUTH_PASSWORD', 'changeme')
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
+app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
 print(f"[CONFIG] DB_PATH={DB_PATH}", flush=True)
 print(f"[CONFIG] PROJECT_ROOT={PROJECT_ROOT}", flush=True)
@@ -139,6 +143,7 @@ def init_db():
         print(f"[DB] Database initialized successfully", flush=True)
     except Exception as e:
         print(f"[DB] ERROR initializing database: {e}", flush=True)
+        sys.exit(1)
 
 
 def get_current_user():
@@ -183,7 +188,9 @@ def _try_api_auth():
         ).fetchone()
         conn.close()
         if row:
-            return dict(row)
+            user_dict = dict(row)
+            user_dict.pop('password_hash', None)
+            return user_dict
         return None
     # 2. Fallback to Basic Auth
     auth = request.authorization
@@ -197,7 +204,9 @@ def _try_api_auth():
     conn.close()
     if not row or not check_password_hash(row['password_hash'], auth.password):
         return None
-    return dict(row)
+    user_dict = dict(row)
+    user_dict.pop('password_hash', None)
+    return user_dict
 
 
 def requires_api_auth(f):
@@ -323,12 +332,21 @@ def backup_db():
     conn.close()
     from flask import send_file
     timestamp = time.strftime('%Y%m%d-%H%M%S')
-    return send_file(
-        tmp.name,
+    tmp_path = tmp.name
+    response = send_file(
+        tmp_path,
         mimetype='application/x-sqlite3',
         as_attachment=True,
         download_name=f'mindmap-backup-{timestamp}.db'
     )
+    @after_this_request
+    def cleanup(response):
+        try:
+            os.unlink(tmp_path)
+        except:
+            pass
+        return response
+    return response
 
 
 @app.route('/api/admin/backup', methods=['POST'])
@@ -402,7 +420,7 @@ def list_users():
             'username': row['username'],
             'displayName': row['display_name'],
             'isAdmin': bool(row['is_admin']),
-            'apiKey': row['api_key'],
+            'hasApiKey': bool(row['api_key']),
             'createdAt': row['created_at'],
             'mapCount': map_count
         })
@@ -730,6 +748,7 @@ def delete_map(map_id):
     if row and row['user_id'] != user['id'] and not user.get('is_admin'):
         conn.close()
         return jsonify({'error': 'Accès refusé'}), 403
+    conn.execute('DELETE FROM map_versions WHERE map_id = ?', (map_id,))
     conn.execute('DELETE FROM maps WHERE id = ?', (map_id,))
     conn.commit()
     conn.close()
@@ -766,6 +785,8 @@ def move_map(map_id):
     """Move a map to a folder."""
     user = request.current_user
     data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Invalid JSON'}), 400
     folder_id = data.get('folderId')
     conn = get_db()
     conn.execute('UPDATE maps SET folder_id = ? WHERE id = ? AND user_id = ?', (folder_id, map_id, user['id']))
@@ -1247,8 +1268,11 @@ def static_files(path):
     # Don't serve files from api/ path
     if path.startswith('api/'):
         return jsonify({'error': 'Not found'}), 404
+    # Block access to server directory and dotfiles
+    if path.startswith('server/') or path.startswith('.'):
+        return jsonify({'error': 'Not found'}), 404
     # Login page and its assets are public
-    if path in ('login.html', 'admin.html', 'shared.html'):
+    if path in ('login.html', 'shared.html'):
         return send_from_directory(app.static_folder, path)
     # Static assets (CSS, JS, fonts) are always accessible
     if path.startswith('src/') or path.endswith('.css') or path.endswith('.js') or path.endswith('.ico'):

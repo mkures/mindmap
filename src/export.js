@@ -31,6 +31,19 @@ export function exportMarkdown(map) {
 
     walk(map.rootId, 0);
 
+    // Include free nodes
+    Object.values(map.nodes).forEach(n => {
+        if (n.placement === 'free' && n.fx != null) {
+            const freeText = (n.text || '').replace(/\n/g, ' ').trim() || '(vide)';
+            lines.push(`\n## ${freeText}`);
+            if (n.body) lines.push(`> ${n.body.replace(/\n/g, '\n> ')}`);
+            // Walk children of free roots
+            if (n.children && n.children.length > 0) {
+                n.children.forEach(childId => walk(childId, 2));
+            }
+        }
+    });
+
     const content = lines.join('\n');
     const filename = `${map.title || 'mindmap'}.md`;
     downloadText(content, filename, 'text/markdown');
@@ -94,11 +107,13 @@ export function exportImage(svgElement, map, pan) {
     // Calculate bounding box
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     Object.values(map.nodes).forEach(n => {
+        if (!isFinite(n.x) || !isFinite(n.y) || !n.w || !n.h) return;
         minX = Math.min(minX, n.x);
         minY = Math.min(minY, n.y);
         maxX = Math.max(maxX, n.x + n.w);
         maxY = Math.max(maxY, n.y + n.h);
     });
+    if (!isFinite(minX)) return; // No visible nodes
 
     const padding = 40;
     const width = maxX - minX + padding * 2;
@@ -129,6 +144,7 @@ export function exportImage(svgElement, map, pan) {
     const url = URL.createObjectURL(svgBlob);
 
     const img = new Image();
+    img.onerror = () => { URL.revokeObjectURL(url); };
     img.onload = () => {
         const canvas = document.createElement('canvas');
         const scale = 3; // Higher resolution
@@ -164,11 +180,13 @@ export function exportPdf(svgElement, map, pan) {
     // Calculate bounding box
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     Object.values(map.nodes).forEach(n => {
+        if (!isFinite(n.x) || !isFinite(n.y) || !n.w || !n.h) return;
         minX = Math.min(minX, n.x);
         minY = Math.min(minY, n.y);
         maxX = Math.max(maxX, n.x + n.w);
         maxY = Math.max(maxY, n.y + n.h);
     });
+    if (!isFinite(minX)) return; // No visible nodes
 
     const padding = 40;
     const width = maxX - minX + padding * 2;
@@ -199,6 +217,7 @@ export function exportPdf(svgElement, map, pan) {
     const url = URL.createObjectURL(svgBlob);
 
     const img = new Image();
+    img.onerror = () => { URL.revokeObjectURL(url); };
     img.onload = () => {
         const canvas = document.createElement('canvas');
         const scale = 2;
@@ -233,10 +252,8 @@ export function exportPdf(svgElement, map, pan) {
 
         // Simple PDF generation (without jsPDF dependency)
         // We'll use a data URL approach with an embedded image
-        const pdfContent = generateSimplePdf(imgData, pageWidth, pageHeight, offsetX, offsetY, pdfWidth, pdfHeight, isLandscape);
-
-        const filename = `${map.title || 'mindmap'}.pdf`;
-        downloadBlob(new Blob([pdfContent], { type: 'application/pdf' }), filename);
+        generateSimplePdf(imgData, pageWidth, pageHeight, offsetX, offsetY, pdfWidth, pdfHeight, isLandscape);
+        // PDF is handled via print dialog, no blob download needed
     };
     img.src = url;
 }
@@ -327,6 +344,10 @@ function createPrintablePdf(imgDataUrl, pageWidth, pageHeight, x, y, imgWidth, i
 
     // Open in new window for printing
     const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+        alert('Le navigateur a bloqué le popup. Autorisez les popups pour exporter en PDF.');
+        return new Uint8Array(0);
+    }
     printWindow.document.write(html);
     printWindow.document.close();
 
@@ -347,6 +368,8 @@ function downloadBlob(blob, filename) {
     a.download = filename;
     document.body.appendChild(a);
     a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }, 100);
 }

@@ -387,6 +387,49 @@ export function deleteFrame(map, frameId) {
     map.updatedAt = Date.now();
 }
 
+// ── Tasks ──────────────────────────────────────────────────────────────────
+
+export function addTask(map, nodeId, text) {
+    const node = map.nodes[nodeId];
+    if (!node) return null;
+    if (!node.tasks) node.tasks = [];
+    const task = {
+        id: 't' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+        text,
+        done: false
+    };
+    node.tasks.push(task);
+    map.updatedAt = Date.now();
+    return task;
+}
+
+export function toggleTask(map, nodeId, taskId) {
+    const node = map.nodes[nodeId];
+    if (!node?.tasks) return;
+    const task = node.tasks.find(t => t.id === taskId);
+    if (task) {
+        task.done = !task.done;
+        map.updatedAt = Date.now();
+    }
+}
+
+export function deleteTask(map, nodeId, taskId) {
+    const node = map.nodes[nodeId];
+    if (!node?.tasks) return;
+    node.tasks = node.tasks.filter(t => t.id !== taskId);
+    map.updatedAt = Date.now();
+}
+
+export function getAllTasks(map) {
+    const result = [];
+    Object.values(map.nodes).forEach(node => {
+        if (node.tasks && node.tasks.length > 0) {
+            result.push({ nodeId: node.id, nodeText: node.text, tasks: node.tasks });
+        }
+    });
+    return result;
+}
+
 export function updateFrame(map, frameId, updates) {
     if (!map.frames) return null;
     const frame = map.frames.find(f => f.id === frameId);

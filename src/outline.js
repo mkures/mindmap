@@ -198,6 +198,11 @@ function renderMobileOutline() {
         _container.appendChild(buildNoteAccordion(focusId, focusBody, true));
     }
 
+    // ── Current node's tasks ──
+    if (focusNode.tasks && focusNode.tasks.length > 0) {
+        _container.appendChild(buildTaskSection(focusId, focusNode.tasks));
+    }
+
     // ── Unified list: tree children + free nodes as peers ──
     const children = focusNode.children || [];
 
@@ -254,6 +259,15 @@ function renderMobileOutline() {
                 chevron.className = 'mobile-chevron';
                 chevron.textContent = '›';
                 row.appendChild(chevron);
+            }
+
+            // Task count indicator
+            if (child.tasks && child.tasks.length > 0) {
+                const doneCount = child.tasks.filter(t => t.done).length;
+                const taskBadge = document.createElement('span');
+                taskBadge.className = 'mobile-task-count';
+                taskBadge.textContent = `✓ ${doneCount}/${child.tasks.length}`;
+                row.appendChild(taskBadge);
             }
 
             // Note icon indicator
@@ -518,6 +532,41 @@ function appendTagDots(row, node) {
         tagDot.title = def.name;
         row.appendChild(tagDot);
     });
+}
+
+function buildTaskSection(nodeId, tasks) {
+    const section = document.createElement('div');
+    section.className = 'mobile-task-section';
+
+    const header = document.createElement('div');
+    header.style.cssText = 'font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;';
+    const doneCount = tasks.filter(t => t.done).length;
+    header.textContent = `Tâches (${doneCount}/${tasks.length})`;
+    section.appendChild(header);
+
+    tasks.forEach(task => {
+        const item = document.createElement('div');
+        item.className = 'mobile-task-item' + (task.done ? ' done' : '');
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = task.done;
+        cb.addEventListener('change', () => {
+            task.done = !task.done;
+            if (_callbacks?.onNodeChanged) _callbacks.onNodeChanged(nodeId);
+            renderOutline();
+        });
+
+        const text = document.createElement('span');
+        text.className = 'mobile-task-item-text';
+        text.textContent = task.text;
+
+        item.appendChild(cb);
+        item.appendChild(text);
+        section.appendChild(item);
+    });
+
+    return section;
 }
 
 function buildNotePreview(body) {

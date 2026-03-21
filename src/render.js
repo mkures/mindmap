@@ -300,6 +300,29 @@ function updateBubbleElement(g, node, settings, isSelected) {
         noteIcon.remove();
     }
 
+    // Task indicator
+    let taskIcon = g.querySelector('.task-icon');
+    if (node.tasks && node.tasks.length > 0) {
+        const doneCount = node.tasks.filter(t => t.done).length;
+        const total = node.tasks.length;
+        const allDone = doneCount === total;
+        if (!taskIcon) {
+            taskIcon = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            taskIcon.classList.add('task-icon');
+            taskIcon.setAttribute('font-size', '9');
+            taskIcon.setAttribute('dominant-baseline', 'hanging');
+            taskIcon.setAttribute('pointer-events', 'none');
+            g.appendChild(taskIcon);
+        }
+        taskIcon.textContent = allDone ? '✓' + total : doneCount + '/' + total;
+        taskIcon.setAttribute('x', node.body ? node.w - 30 : node.w - 4);
+        taskIcon.setAttribute('y', 3);
+        taskIcon.setAttribute('text-anchor', 'end');
+        taskIcon.setAttribute('fill', allDone ? '#22c55e' : '#f59e0b');
+    } else if (taskIcon) {
+        taskIcon.remove();
+    }
+
     // Collapse indicator
     let collapseIndicator = g.querySelector('.collapse-indicator');
     const hasChildren = node.children && node.children.length > 0;

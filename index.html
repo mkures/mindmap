@@ -31,6 +31,7 @@
             <span class="tb-sep"></span>
             <button id="fitBtn">Centrer</button>
             <button id="outlineBtn">Plan</button>
+            <button id="taskModalBtn" title="Tâches">✓ Tâches</button>
             <span class="tb-sep"></span>
             <div class="tb-dropdown">
                 <button id="exportDropBtn">Exporter ▾</button>
@@ -228,6 +229,29 @@
                 </div>
             </div>
             <div id="noteViewerContainer" class="note-viewer-content"></div>
+        </div>
+    </div>
+    <!-- Task Modal -->
+    <div id="taskModal" class="modal hidden" style="max-width:620px;width:95vw;">
+        <div class="modal-content">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                <h2 style="margin:0;font-size:16px;">Tâches</h2>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <select id="taskFilter" style="font-size:12px;padding:3px 8px;border-radius:4px;border:1px solid var(--border);">
+                        <option value="all">Toutes</option>
+                        <option value="todo">À faire</option>
+                        <option value="done">Terminées</option>
+                    </select>
+                    <button id="taskCloseBtn" class="btn-icon">✕</button>
+                </div>
+            </div>
+            <div id="taskProgress" class="task-progress"></div>
+            <div id="taskListContainer" style="max-height:50vh;overflow-y:auto;"></div>
+            <div class="task-add-bar" style="margin-top:12px;display:flex;gap:8px;">
+                <select id="taskNodeSelect" style="flex:1;font-size:12px;padding:5px 8px;border-radius:4px;border:1px solid var(--border);"></select>
+                <input id="taskNewInput" type="text" placeholder="Nouvelle tâche…" style="flex:2;font-size:12px;padding:5px 8px;border-radius:4px;border:1px solid var(--border);">
+                <button id="taskAddBtn" style="font-size:12px;padding:5px 12px;">+ Ajouter</button>
+            </div>
         </div>
     </div>
     <!-- History Modal -->

@@ -23,7 +23,11 @@ import {
     addFrame,
     deleteFrame,
     updateFrame,
-    getNodesInFrame
+    getNodesInFrame,
+    addTask,
+    toggleTask,
+    deleteTask,
+    getAllTasks
 } from './model.js';
 import { layout } from './layout.js';
 import { render, clearRenderCache, setSelectedLinkId, setSelectedFrameId } from './render.js';
@@ -85,6 +89,7 @@ const undoBtn = document.getElementById('undoBtn');
 const redoBtn = document.getElementById('redoBtn');
 const exportDropBtn = document.getElementById('exportDropBtn');
 const exportDropMenu = document.getElementById('exportDropMenu');
+const taskModalBtn = document.getElementById('taskModalBtn');
 const outlineContent = document.getElementById('outlineContent');
 
 let currentUser = null;
@@ -247,6 +252,7 @@ function wireUI() {
             closeHelp();
             closeNoteModal();
             closeNoteViewModal();
+            closeTaskModal();
         });
     }
 
@@ -522,6 +528,11 @@ function wireUI() {
     }
     if (redoBtn) {
         redoBtn.onclick = () => redo();
+    }
+
+    // Task modal button
+    if (taskModalBtn) {
+        taskModalBtn.onclick = () => openTaskModal(selectedId || map?.rootId);
     }
 
     // Export dropdown
@@ -1109,6 +1120,10 @@ function wireUI() {
                     });
                 }
             }
+        // ── T = open tasks ──
+        } else if (e.key === 't' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            e.preventDefault();
+            openTaskModal(selectedId || map?.rootId);
         } else if (e.key === 'F' && !e.ctrlKey && !e.metaKey && !e.altKey) {
             e.preventDefault();
             const svgW = svgElement.clientWidth;
@@ -1146,6 +1161,7 @@ function wireUI() {
         { label: 'Exporter en PNG', shortcut: '', fn: () => { if (map) exportImage(map, viewport); } },
         { label: 'Exporter en PDF', shortcut: '', fn: () => { if (map) exportPdf(map, viewport); } },
         { label: 'Vue Plan / Outline', shortcut: '', fn: () => toggleOutline() },
+        { label: 'Tâches', shortcut: 'T', fn: () => openTaskModal(selectedId || map?.rootId) },
         { label: 'Configuration', shortcut: '', fn: () => configBtn?.click() },
         { label: 'Zoom +', shortcut: 'Ctrl+=', fn: () => zoomBy(1.2) },
         { label: 'Zoom -', shortcut: 'Ctrl+-', fn: () => zoomBy(1/1.2) },
@@ -2538,6 +2554,16 @@ function showNodeContextMenu(x, y, nodeId) {
         menu.appendChild(noteBtn);
     }
 
+    // Task section
+    const node = map.nodes[nodeId];
+    const taskCount = node?.tasks?.length || 0;
+    const taskBtn = document.createElement('button');
+    taskBtn.innerHTML = taskCount > 0
+        ? `✓ Tâches (${node.tasks.filter(t => t.done).length}/${taskCount})`
+        : '✓ Ajouter une tâche';
+    taskBtn.onclick = () => { menu.remove(); openTaskModal(nodeId); };
+    menu.appendChild(taskBtn);
+
     // Image section
     const imgBtn = document.createElement('button');
     imgBtn.innerHTML = '🖼 Ajouter une image';
@@ -2777,6 +2803,136 @@ function closeNoteViewModal() {
         document.getElementById('configModal').classList.contains('hidden') &&
         document.getElementById('helpModal').classList.contains('hidden') &&
         document.getElementById('noteModal').classList.contains('hidden')) {
+        modalBackdrop.classList.add('hidden');
+    }
+}
+
+// ── Task Modal ──────────────────────────────────────────────
+function openTaskModal(focusNodeId) {
+    if (!map) return;
+    const modal = document.getElementById('taskModal');
+    const container = document.getElementById('taskListContainer');
+    const filter = document.getElementById('taskFilter');
+    const nodeSelect = document.getElementById('taskNodeSelect');
+    const newInput = document.getElementById('taskNewInput');
+    const addBtn = document.getElementById('taskAddBtn');
+    const closeBtn = document.getElementById('taskCloseBtn');
+    if (!modal) return;
+
+    modal.classList.remove('hidden');
+    modalBackdrop.classList.remove('hidden');
+
+    function renderTaskList() {
+        container.innerHTML = '';
+        const filterVal = filter.value;
+        const allGroups = getAllTasks(map);
+        let totalDone = 0, totalCount = 0;
+
+        allGroups.forEach(group => {
+            const filtered = group.tasks.filter(t => {
+                if (filterVal === 'todo') return !t.done;
+                if (filterVal === 'done') return t.done;
+                return true;
+            });
+            if (filtered.length === 0) return;
+
+            const groupEl = document.createElement('div');
+            groupEl.className = 'task-node-group';
+            const titleEl = document.createElement('div');
+            titleEl.className = 'task-node-group-title';
+            titleEl.textContent = group.nodeText || 'Sans titre';
+            groupEl.appendChild(titleEl);
+
+            filtered.forEach(task => {
+                const item = document.createElement('div');
+                item.className = 'task-item' + (task.done ? ' done' : '');
+
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.checked = task.done;
+                cb.addEventListener('change', () => {
+                    pushUndo();
+                    toggleTask(map, group.nodeId, task.id);
+                    markMapChanged();
+                    update();
+                    renderTaskList();
+                });
+
+                const text = document.createElement('span');
+                text.className = 'task-item-text';
+                text.textContent = task.text;
+
+                const del = document.createElement('button');
+                del.className = 'task-item-delete';
+                del.textContent = '✕';
+                del.addEventListener('click', () => {
+                    pushUndo();
+                    deleteTask(map, group.nodeId, task.id);
+                    markMapChanged();
+                    update();
+                    renderTaskList();
+                });
+
+                item.appendChild(cb);
+                item.appendChild(text);
+                item.appendChild(del);
+                groupEl.appendChild(item);
+            });
+
+            container.appendChild(groupEl);
+            group.tasks.forEach(t => { totalCount++; if (t.done) totalDone++; });
+        });
+
+        // Progress bar
+        const progressEl = document.getElementById('taskProgress');
+        if (totalCount > 0) {
+            const pct = Math.round((totalDone / totalCount) * 100);
+            progressEl.innerHTML = `<span>${totalDone}/${totalCount}</span>` +
+                `<div class="task-progress-bar"><div class="task-progress-fill" style="width:${pct}%"></div></div>` +
+                `<span>${pct}%</span>`;
+        } else {
+            progressEl.textContent = 'Aucune tâche';
+        }
+    }
+
+    // Populate node selector
+    nodeSelect.innerHTML = '';
+    Object.values(map.nodes).forEach(n => {
+        const opt = document.createElement('option');
+        opt.value = n.id;
+        opt.textContent = n.text || 'Sans titre';
+        if (n.id === focusNodeId) opt.selected = true;
+        nodeSelect.appendChild(opt);
+    });
+
+    filter.onchange = renderTaskList;
+
+    addBtn.onclick = () => {
+        const text = newInput.value.trim();
+        const nodeId = nodeSelect.value;
+        if (!text || !nodeId) return;
+        pushUndo();
+        addTask(map, nodeId, text);
+        newInput.value = '';
+        markMapChanged();
+        update();
+        renderTaskList();
+    };
+    newInput.onkeydown = (e) => { if (e.key === 'Enter') addBtn.click(); };
+
+    closeBtn.onclick = closeTaskModal;
+
+    renderTaskList();
+}
+
+function closeTaskModal() {
+    const modal = document.getElementById('taskModal');
+    if (modal) modal.classList.add('hidden');
+    if (document.getElementById('mapListModal')?.classList.contains('hidden') &&
+        document.getElementById('configModal')?.classList.contains('hidden') &&
+        document.getElementById('helpModal')?.classList.contains('hidden') &&
+        document.getElementById('noteModal')?.classList.contains('hidden') &&
+        document.getElementById('noteViewModal')?.classList.contains('hidden')) {
         modalBackdrop.classList.add('hidden');
     }
 }

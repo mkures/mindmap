@@ -1547,6 +1547,128 @@ body.dragging-node {
     opacity: 1;
 }
 
+/* ── Task modal ──────────────────────────────────────────────────────────── */
+.task-progress {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.task-progress-bar {
+    flex: 1;
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.task-progress-fill {
+    height: 100%;
+    background: #22c55e;
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+.task-node-group {
+    margin-bottom: 12px;
+}
+.task-node-group-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border-subtle);
+    margin-bottom: 4px;
+}
+.task-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 4px;
+    border-radius: var(--radius-sm);
+    transition: background 0.15s;
+}
+.task-item:hover {
+    background: var(--surface-hover);
+}
+.task-item input[type="checkbox"] {
+    accent-color: #22c55e;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.task-item-text {
+    flex: 1;
+    font-size: 13px;
+    color: var(--text);
+}
+.task-item.done .task-item-text {
+    text-decoration: line-through;
+    color: var(--text-secondary);
+}
+.task-item-delete {
+    opacity: 0;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: opacity 0.15s;
+}
+.task-item:hover .task-item-delete {
+    opacity: 1;
+}
+.task-item-delete:hover {
+    color: #ef4444;
+    background: rgba(239,68,68,0.1);
+}
+
+/* Mobile task section */
+.mobile-task-section {
+    margin: 8px 0;
+    padding: 8px 12px;
+    background: var(--surface);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+}
+.mobile-task-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-subtle);
+    min-height: 44px;
+}
+.mobile-task-item:last-child {
+    border-bottom: none;
+}
+.mobile-task-item input[type="checkbox"] {
+    accent-color: #22c55e;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.mobile-task-item-text {
+    flex: 1;
+    font-size: 14px;
+}
+.mobile-task-item.done .mobile-task-item-text {
+    text-decoration: line-through;
+    color: var(--text-secondary);
+}
+.mobile-task-count {
+    font-size: 11px;
+    color: var(--text-secondary);
+    background: var(--surface-hover);
+    padding: 2px 6px;
+    border-radius: 10px;
+    margin-left: 4px;
+}
+
 /* ── Emoji picker ────────────────────────────────────────────────────────── */
 .emoji-picker {
     position: fixed;

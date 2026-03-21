@@ -421,6 +421,7 @@ def list_users():
             'displayName': row['display_name'],
             'isAdmin': bool(row['is_admin']),
             'hasApiKey': bool(row['api_key']),
+            'apiKeyPreview': ('••••' + row['api_key'][-8:]) if row['api_key'] else None,
             'createdAt': row['created_at'],
             'mapCount': map_count
         })

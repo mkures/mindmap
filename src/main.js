@@ -1407,21 +1407,24 @@ function updateMinimap() {
     const cw = canvas.width, ch = canvas.height;
     ctx.clearRect(0, 0, cw, ch);
 
-    const nodes = Object.values(map.nodes);
+    // Filter to nodes with valid computed positions
+    const nodes = Object.values(map.nodes).filter(n =>
+        (n.x != null || n.fx != null) && n.w > 0 && n.h > 0
+    );
     if (nodes.length === 0) return;
 
     // Compute bounding box
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     nodes.forEach(n => {
-        const nx = n.x ?? n.fx ?? 0;
-        const ny = n.y ?? n.fy ?? 0;
-        const nw = n.w || 80;
-        const nh = n.h || 30;
+        const nx = n.x ?? n.fx;
+        const ny = n.y ?? n.fy;
         if (nx < minX) minX = nx;
         if (ny < minY) minY = ny;
-        if (nx + nw > maxX) maxX = nx + nw;
-        if (ny + nh > maxY) maxY = ny + nh;
+        if (nx + n.w > maxX) maxX = nx + n.w;
+        if (ny + n.h > maxY) maxY = ny + n.h;
     });
+
+    if (!isFinite(minX)) return;
 
     const padding = 20;
     const bw = maxX - minX + padding * 2;
@@ -1433,11 +1436,11 @@ function updateMinimap() {
 
     // Draw nodes as small rects
     nodes.forEach(n => {
-        const nx = (n.x ?? n.fx ?? 0) * scale + ox;
-        const ny = (n.y ?? n.fy ?? 0) * scale + oy;
-        const nw = Math.max(2, (n.w || 80) * scale);
-        const nh = Math.max(2, (n.h || 30) * scale);
-        ctx.fillStyle = n.id === selectedId ? 'var(--accent, #d4873f)' : (n.color || '#ccc');
+        const nx = (n.x ?? n.fx) * scale + ox;
+        const ny = (n.y ?? n.fy) * scale + oy;
+        const nw = Math.max(2, n.w * scale);
+        const nh = Math.max(2, n.h * scale);
+        ctx.fillStyle = n.id === selectedId ? '#d4873f' : (n.color || '#ccc');
         ctx.globalAlpha = focusRootId && !isDescendantOf(n.id, focusRootId) ? 0.15 : 0.7;
         ctx.fillRect(nx, ny, nw, nh);
     });

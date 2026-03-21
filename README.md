@@ -4,12 +4,28 @@ A minimal single-page mind map editor built from scratch with vanilla JavaScript
 
 ## Features
 
-- **Keyboard-driven editing**: Tab to add child, Enter to add sibling, F2 or double-click to edit any node (including root)
+- **Keyboard-driven editing**: Tab/Enter/Delete for tree operations, arrow keys for navigation, F2 to edit
 - **Drag & drop**: Reparent nodes by dragging them onto another node
+- **Free bubbles & cards**: Create floating nodes and rich-text cards on the canvas
+- **Frames**: Group nodes visually with resizable colored frames
+- **Cross-branch links**: Shift+drag between nodes to draw relationship arrows
+- **Rich notes**: Attach rich-text notes to any node (N key), visible in outline view
+- **Emoji picker**: Insert emojis into nodes via picker (E key) or context menu
 - **Images**: Attach pictures to nodes (auto-resized, embedded as base64)
-- **Pan & zoom**: Drag background to pan, scroll wheel to zoom, Ctrl+F to fit
-- **Auto-layout**: Hierarchical layout with automatic branch coloring
+- **Tags**: Define and assign color-coded tags to nodes for categorization
+- **Pan & zoom**: Drag background to pan, scroll wheel or Ctrl+=/- to zoom
+- **Minimap**: Always-visible overview with click-to-navigate
+- **Command palette**: Ctrl+K to fuzzy-search all available actions
+- **Focus mode**: Isolate a subtree for distraction-free editing (Ctrl+Shift+F)
+- **Search**: Find nodes by text (Ctrl+F)
+- **Outline view**: Tree-structured plan view with note previews and MD export
+- **Templates**: Start from pre-built structures (Brainstorming, SWOT, Project, etc.)
+- **Auto-layout**: Bidirectional hierarchical layout with automatic branch coloring
+- **Undo/Redo**: Full history with Ctrl+Z / Ctrl+Y
 - **Autosave**: Changes automatically saved to backend with configurable interval
+- **Multi-user auth**: Session-based authentication with admin panel
+- **Share tokens**: Generate read-only links to share maps
+- **Export**: Markdown, PNG, PDF, JSON
 - **Configuration**: Customize colors per depth level, font family/size, autosave delay
 
 ## Quick Start
@@ -41,10 +57,24 @@ python app.py
 | Tab | Add child node |
 | Enter | Add sibling node |
 | Delete / Backspace | Delete selected node |
-| F2 / Double-click | Edit node text |
-| Shift + Arrow | Reorder siblings |
-| Ctrl + F | Fit to screen |
-| Start typing | Edit selected node |
+| F2 / Start typing | Edit node text |
+| Arrow keys | Navigate between nodes |
+| Ctrl + Arrow | Reorder siblings |
+| Space | Collapse/expand branch |
+| N | Open/create note |
+| E | Emoji picker |
+| F | Add frame |
+| Home | Jump to root |
+| Ctrl + K | Command palette |
+| Ctrl + F | Search nodes |
+| Ctrl + Shift + F | Focus mode |
+| Ctrl + Z / Ctrl + Y | Undo / Redo |
+| Ctrl + C / Ctrl + V | Copy / Paste subtree |
+| Ctrl + D | Duplicate node |
+| Ctrl + = / Ctrl + - | Zoom in / out |
+| Ctrl + 0 | Reset zoom to 100% |
+| Shift + drag | Draw cross-branch link |
+| Shift + click | Multi-select |
 
 ## Architecture
 
@@ -52,15 +82,20 @@ python app.py
 Procfile              Railway deployment config
 requirements.txt      Python dependencies
 server/
-  app.py              Flask backend with HTTP Basic Auth + SQLite
+  app.py              Flask backend with session auth + SQLite + admin panel
 
 index.html            Main application
-styles.css            Styling
+styles.css            All styling (Warm Atelier theme)
 src/
-  main.js             App orchestration, events, autosave
+  main.js             App orchestration, events, autosave, keyboard shortcuts
   model.js            Data model and CRUD operations
-  layout.js           Hierarchical layout algorithm
+  layout.js           Bidirectional hierarchical layout algorithm
   render.js           SVG rendering with incremental diffing
+  outline.js          Outline/plan view with note previews
+  export.js           Export (Markdown, PNG, PDF)
+  templates.js        Map templates (Brainstorming, SWOT, etc.)
+  command-palette.js  Ctrl+K fuzzy command search
+  emoji-picker.js     Emoji picker with categories and search
 ```
 
 ## Performance

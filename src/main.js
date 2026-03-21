@@ -31,6 +31,7 @@ import { exportMarkdown, exportImage, exportPdf } from './export.js';
 import { initOutline, renderOutline } from './outline.js';
 import { getTemplates, buildFromTemplate } from './templates.js';
 import { initCommandPalette, openCommandPalette } from './command-palette.js';
+import { openEmojiPicker, closeEmojiPicker } from './emoji-picker.js';
 
 const MAPS_ENDPOINT = '/api/maps';
 let LAST_MAP_STORAGE_KEY = 'mindmap:lastMapId';
@@ -1063,6 +1064,21 @@ function wireUI() {
         } else if (e.key === 'n' && !e.ctrlKey && !e.metaKey && !e.altKey) {
             e.preventDefault();
             if (selectedId) openNoteModal(selectedId);
+        // ── E = emoji picker ──
+        } else if (e.key === 'e' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            e.preventDefault();
+            if (selectedId) {
+                const nodeEl = svgElement.querySelector(`.node[data-id="${selectedId}"]`);
+                if (nodeEl) {
+                    const rect = nodeEl.getBoundingClientRect();
+                    openEmojiPicker(rect.right + 8, rect.top, emoji => {
+                        pushUndo();
+                        map.nodes[selectedId].text = emoji + ' ' + (map.nodes[selectedId].text || '');
+                        update();
+                        markMapChanged();
+                    });
+                }
+            }
         } else if (e.key === 'F' && !e.ctrlKey && !e.metaKey && !e.altKey) {
             e.preventDefault();
             const svgW = svgElement.clientWidth;
@@ -1104,6 +1120,20 @@ function wireUI() {
         { label: 'Zoom +', shortcut: 'Ctrl+=', fn: () => zoomBy(1.2) },
         { label: 'Zoom -', shortcut: 'Ctrl+-', fn: () => zoomBy(1/1.2) },
         { label: 'Zoom 100%', shortcut: 'Ctrl+0', fn: () => { pan.scale = 1; update(); } },
+        { label: 'Insérer un emoji', shortcut: 'E', fn: () => {
+            if (selectedId) {
+                const nodeEl = svgElement.querySelector(`.node[data-id="${selectedId}"]`);
+                if (nodeEl) {
+                    const rect = nodeEl.getBoundingClientRect();
+                    openEmojiPicker(rect.right + 8, rect.top, emoji => {
+                        pushUndo();
+                        map.nodes[selectedId].text = emoji + ' ' + (map.nodes[selectedId].text || '');
+                        update();
+                        markMapChanged();
+                    });
+                }
+            }
+        }},
         { label: 'Ajouter un cadre', shortcut: 'F', fn: () => { const svgW = svgElement.clientWidth; const svgH = svgElement.clientHeight; const cx = (svgW/2-pan.x)/pan.scale; const cy = (svgH/2-pan.y)/pan.scale; const frame = addFrame(map,cx-200,cy-150,400,300); selectFrame(frame.id); update(); markMapChanged(); } },
     ]);
 }
@@ -2474,6 +2504,20 @@ function showNodeContextMenu(x, y, nodeId) {
         imageInput.click();
     };
     menu.appendChild(imgBtn);
+
+    // Emoji button
+    const emojiBtn = document.createElement('button');
+    emojiBtn.innerHTML = '😀 Insérer un emoji';
+    emojiBtn.onclick = () => {
+        menu.remove();
+        openEmojiPicker(x, y, emoji => {
+            pushUndo();
+            map.nodes[nodeId].text = emoji + ' ' + (map.nodes[nodeId].text || '');
+            update();
+            markMapChanged();
+        });
+    };
+    menu.appendChild(emojiBtn);
 
     // Color swatches
     const colorSep = document.createElement('div');

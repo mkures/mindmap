@@ -267,6 +267,10 @@ body.dragging-node {
 }
 
 /* ---- Collapse Indicator ---- */
+.collapse-indicator {
+    cursor: pointer;
+}
+
 .collapse-indicator circle {
     fill: var(--text-secondary);
     transition: fill var(--duration) var(--ease);

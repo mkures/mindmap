@@ -626,6 +626,24 @@ function wireUI() {
             return;
         }
 
+        // Click on collapse indicator → toggle collapse
+        const collapseEl = e.target.closest('.collapse-indicator');
+        if (collapseEl) {
+            const nodeEl = collapseEl.closest('.node');
+            if (nodeEl) {
+                e.preventDefault();
+                e.stopPropagation();
+                const id = nodeEl.dataset.id;
+                selectedId = id;
+                if (toggleCollapse(map, id)) {
+                    markLayoutDirty();
+                    update();
+                    markMapChanged();
+                }
+                return;
+            }
+        }
+
         const nodeEl = e.target.closest('.node');
         if (nodeEl) {
             // Clicking on a node deselects the link and frame

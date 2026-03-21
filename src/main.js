@@ -2977,6 +2977,9 @@ function toggleOutline(force) {
                 onEditNote: (id) => {
                     selectedId = id;
                     openNoteModal(id);
+                },
+                onOpenTasks: (id) => {
+                    openTaskModal(id);
                 }
             });
         }

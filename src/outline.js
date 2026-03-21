@@ -203,6 +203,16 @@ function renderMobileOutline() {
     });
     header.appendChild(editBtn);
 
+    // Task button — opens the task modal for this node
+    const taskBtn = document.createElement('button');
+    taskBtn.className = 'mobile-edit-btn';
+    taskBtn.textContent = '✓';
+    taskBtn.title = 'Tâches';
+    taskBtn.addEventListener('click', () => {
+        if (_callbacks?.onOpenTasks) _callbacks.onOpenTasks(focusId);
+    });
+    header.appendChild(taskBtn);
+
     _container.appendChild(header);
 
     // ── Current node's note (accordion) ──

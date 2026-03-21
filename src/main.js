@@ -2160,16 +2160,22 @@ function startEditing(id, initial) {
         } else if (e.key === 'Tab') {
             e.preventDefault();
             const currentId = editingId;
-            finishEditing();
-            if (currentId) {
-                selectedId = currentId;
-                const childId = addChild(map, currentId);
-                if (childId) {
-                    selectedId = childId;
-                    markLayoutDirty();
-                    update();
-                    markMapChanged();
-                    startEditing(childId);
+            const currentNode = currentId && map ? map.nodes[currentId] : null;
+            // Free nodes (bubbles/cards in frames): Tab just validates
+            if (currentNode && currentNode.placement === 'free') {
+                finishEditing();
+            } else {
+                finishEditing();
+                if (currentId) {
+                    selectedId = currentId;
+                    const childId = addChild(map, currentId);
+                    if (childId) {
+                        selectedId = childId;
+                        markLayoutDirty();
+                        update();
+                        markMapChanged();
+                        startEditing(childId);
+                    }
                 }
             }
         } else if (e.key === 'Escape') {

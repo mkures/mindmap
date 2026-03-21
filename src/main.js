@@ -2242,6 +2242,9 @@ function toggleOutline(force) {
                         markMapChanged();
                         renderOutline(map);
                     }
+                },
+                onExportMd: () => {
+                    if (map) exportMarkdown(map);
                 }
             });
         }

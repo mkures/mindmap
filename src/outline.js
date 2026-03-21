@@ -1,5 +1,5 @@
 /**
- * Outline view — mobile-friendly tree + cards list
+ * Outline view — unified tree-first plan with inline note previews
  * Exported: initOutline(map, containerEl, callbacks)
  * Call renderOutline(map) to refresh after data changes.
  */
@@ -20,70 +20,84 @@ export function renderOutline(map) {
     if (!_map || !_container) return;
     _container.innerHTML = '';
 
-    // Tree section
-    const treeSection = document.createElement('div');
-    treeSection.className = 'outline-section';
-    const treeHeader = document.createElement('div');
-    treeHeader.className = 'outline-section-title';
-    treeHeader.textContent = 'Carte mentale';
-    treeSection.appendChild(treeHeader);
-    const treeList = document.createElement('ul');
-    treeList.className = 'outline-tree';
-    renderTreeNode(_map.rootId, treeList, 0);
-    treeSection.appendChild(treeList);
-    _container.appendChild(treeSection);
+    // ── Header bar with export button ──
+    const header = document.createElement('div');
+    header.className = 'outline-header';
+    const headerTitle = document.createElement('span');
+    headerTitle.className = 'outline-header-title';
+    headerTitle.textContent = _map.title || 'Plan';
+    const exportBtn = document.createElement('button');
+    exportBtn.className = 'outline-export-btn';
+    exportBtn.textContent = 'Exporter MD';
+    exportBtn.addEventListener('click', () => {
+        if (_callbacks?.onExportMd) _callbacks.onExportMd();
+    });
+    header.appendChild(headerTitle);
+    header.appendChild(exportBtn);
+    _container.appendChild(header);
 
-    // Cards section
-    const cards = Object.values(_map.nodes).filter(n => n.nodeType === 'card');
-    if (cards.length > 0) {
-        const cardsSection = document.createElement('div');
-        cardsSection.className = 'outline-section';
-        const cardsHeader = document.createElement('div');
-        cardsHeader.className = 'outline-section-title';
-        cardsHeader.textContent = 'Cards';
-        cardsSection.appendChild(cardsHeader);
-        cards.forEach(card => {
-            const item = document.createElement('div');
-            item.className = 'outline-card-item';
-            const title = document.createElement('span');
-            title.className = 'outline-card-title';
-            title.textContent = card.text || 'Sans titre';
-            const preview = document.createElement('p');
-            preview.className = 'outline-card-preview';
-            preview.textContent = (card.body || '').slice(0, 80) + ((card.body || '').length > 80 ? '…' : '');
-            item.appendChild(title);
-            item.appendChild(preview);
-            item.addEventListener('click', () => {
-                if (_callbacks?.onSelectNode) _callbacks.onSelectNode(card.id);
-            });
-            cardsSection.appendChild(item);
+    // ── Single unified list ──
+    const list = document.createElement('ul');
+    list.className = 'outline-tree';
+
+    // 1. Tree nodes (root + children, depth-first)
+    renderTreeNode(_map.rootId, list, 0);
+
+    // 2. Free bubbles and cards as top-level peers
+    const freeNodes = Object.values(_map.nodes).filter(n =>
+        n.placement === 'free' || (n.fx != null && n.id !== _map.rootId && !hasTreeParent(n))
+    );
+    freeNodes.forEach(node => {
+        const li = document.createElement('li');
+        li.className = 'outline-item';
+
+        const row = document.createElement('div');
+        row.className = 'outline-item-row';
+
+        const icon = document.createElement('span');
+        if (node.nodeType === 'card') {
+            icon.className = 'outline-icon outline-icon-card';
+            icon.textContent = '▪';
+        } else {
+            icon.className = 'outline-dot';
+            icon.style.background = node.color || '#fef3c7';
+            icon.style.borderRadius = '3px';
+        }
+
+        const text = document.createElement('span');
+        text.className = 'outline-item-text';
+        text.textContent = node.text || 'Sans titre';
+        if (node.nodeType === 'card') text.style.fontWeight = '600';
+
+        row.appendChild(icon);
+        row.appendChild(text);
+        appendTagDots(row, node);
+
+        row.addEventListener('click', () => {
+            if (_callbacks?.onSelectNode) _callbacks.onSelectNode(node.id);
         });
-        _container.appendChild(cardsSection);
-    }
 
-    // Free bubbles section
-    const bubbles = Object.values(_map.nodes).filter(n => n.placement === 'free' && n.nodeType !== 'card');
-    if (bubbles.length > 0) {
-        const bubblesSection = document.createElement('div');
-        bubblesSection.className = 'outline-section';
-        const bubblesHeader = document.createElement('div');
-        bubblesHeader.className = 'outline-section-title';
-        bubblesHeader.textContent = 'Notes libres';
-        bubblesSection.appendChild(bubblesHeader);
-        bubbles.forEach(bubble => {
-            const item = document.createElement('div');
-            item.className = 'outline-bubble-item';
-            item.textContent = bubble.text || '';
-            item.style.borderLeft = `3px solid ${bubble.color || '#fef3c7'}`;
-            item.addEventListener('click', () => {
-                if (_callbacks?.onSelectNode) _callbacks.onSelectNode(bubble.id);
+        li.appendChild(row);
+
+        // Note/body preview for free nodes
+        const body = node.body || node.note;
+        if (body) {
+            li.appendChild(buildNotePreview(body));
+        }
+
+        list.appendChild(li);
+
+        // Render children of free nodes (free roots can have children)
+        if (node.children && node.children.length > 0) {
+            node.children.forEach(childId => {
+                renderTreeNode(childId, list, 1);
             });
-            bubblesSection.appendChild(item);
-        });
-        _container.appendChild(bubblesSection);
-    }
+        }
+    });
 
-    // Quick-add bar at bottom
+    _container.appendChild(list);
+
+    // ── Quick-add bar at bottom ──
     const quickAdd = document.createElement('div');
     quickAdd.className = 'outline-quick-add';
     const input = document.createElement('input');
@@ -107,10 +121,27 @@ export function renderOutline(map) {
     _container.appendChild(quickAdd);
 }
 
+/** Check if a node is part of the tree (has a non-free ancestor chain to root) */
+function hasTreeParent(node) {
+    if (!_map) return false;
+    let current = node;
+    const visited = new Set();
+    while (current && current.parentId && !visited.has(current.id)) {
+        visited.add(current.id);
+        const parent = _map.nodes[current.parentId];
+        if (!parent) return false;
+        if (parent.id === _map.rootId) return true;
+        current = parent;
+    }
+    return false;
+}
+
 function renderTreeNode(nodeId, parentEl, depth) {
     if (!_map || depth > 20) return;
     const node = _map.nodes[nodeId];
-    if (!node || node.placement === 'free') return;
+    if (!node) return;
+    // Skip free nodes (they're rendered separately as peers)
+    if (node.placement === 'free' && node.id !== _map.rootId) return;
 
     const li = document.createElement('li');
     li.className = 'outline-item';
@@ -126,13 +157,36 @@ function renderTreeNode(nodeId, parentEl, depth) {
     const text = document.createElement('span');
     text.className = 'outline-item-text';
     text.textContent = node.text || '';
-
-    // Tag dots
-    const nodeTags = node.tags || [];
-    const tagDefs = (_map.settings && _map.settings.tags) || [];
+    if (depth === 0) text.style.fontWeight = '600';
 
     row.appendChild(dot);
     row.appendChild(text);
+    appendTagDots(row, node);
+
+    row.addEventListener('click', () => {
+        if (_callbacks?.onSelectNode) _callbacks.onSelectNode(nodeId);
+    });
+
+    li.appendChild(row);
+
+    // Note preview
+    const body = node.body || node.note;
+    if (body) {
+        li.appendChild(buildNotePreview(body));
+    }
+
+    parentEl.appendChild(li);
+
+    if (!node.collapsed) {
+        (node.children || []).forEach(childId => {
+            renderTreeNode(childId, parentEl, depth + 1);
+        });
+    }
+}
+
+function appendTagDots(row, node) {
+    const nodeTags = node.tags || [];
+    const tagDefs = (_map.settings && _map.settings.tags) || [];
     nodeTags.forEach(tagId => {
         const def = tagDefs.find(t => t.id === tagId);
         if (!def) return;
@@ -142,17 +196,12 @@ function renderTreeNode(nodeId, parentEl, depth) {
         tagDot.title = def.name;
         row.appendChild(tagDot);
     });
+}
 
-    row.addEventListener('click', () => {
-        if (_callbacks?.onSelectNode) _callbacks.onSelectNode(nodeId);
-    });
-
-    li.appendChild(row);
-    parentEl.appendChild(li);
-
-    if (!node.collapsed) {
-        (node.children || []).forEach(childId => {
-            renderTreeNode(childId, parentEl, depth + 1);
-        });
-    }
+function buildNotePreview(body) {
+    const preview = document.createElement('div');
+    preview.className = 'outline-note-preview';
+    const truncated = body.length > 120 ? body.slice(0, 120) + '…' : body;
+    preview.textContent = truncated;
+    return preview;
 }

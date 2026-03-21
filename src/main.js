@@ -1293,7 +1293,7 @@ function startFrameTitleEdit(frameId) {
     if (!map) return;
     const frame = (map.frames || []).find(f => f.id === frameId);
     if (!frame) return;
-    const frameEl = viewport.querySelector(`.frame[data-frame-id="${frameId}"]`);
+    const frameEl = viewport.querySelector(`#frame-overlays .frame[data-frame-id="${frameId}"]`);
     if (!frameEl) return;
     const titleEl = frameEl.querySelector('.frame-title');
     if (!titleEl) return;

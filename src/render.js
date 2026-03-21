@@ -13,7 +13,9 @@ export function setSelectedLinkId(id) {
 }
 
 let frameGroup = null;
+let frameOverlayGroup = null;
 const frameElements = new Map();
+const frameOverlayElements = new Map();
 let _selectedFrameId = null;
 
 const FRAME_STROKE = {
@@ -61,10 +63,15 @@ export function render(map, svg, selectedId) {
         nodeGroup.id = 'nodes';
         svg.appendChild(nodeGroup);
 
+        frameOverlayGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        frameOverlayGroup.id = 'frame-overlays';
+        svg.appendChild(frameOverlayGroup);
+
         nodeElements.clear();
         linkElements.clear();
         freeLinkElements.clear();
         frameElements.clear();
+        frameOverlayElements.clear();
     }
 
     // Render frames (background layer)
@@ -460,6 +467,7 @@ function renderFrames(map) {
     for (const frame of frames) {
         currentFrameIds.add(frame.id);
 
+        // Background layer (behind nodes)
         let g = frameElements.get(frame.id);
         if (!g) {
             g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -471,17 +479,6 @@ function renderFrames(map) {
             bg.setAttribute('rx', '12');
             bg.setAttribute('ry', '12');
             g.appendChild(bg);
-
-            const titleEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            titleEl.classList.add('frame-title');
-            g.appendChild(titleEl);
-
-            const resizeHandle = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-            resizeHandle.classList.add('frame-resize-handle');
-            resizeHandle.setAttribute('width', '16');
-            resizeHandle.setAttribute('height', '16');
-            resizeHandle.setAttribute('rx', '2');
-            g.appendChild(resizeHandle);
 
             frameGroup.appendChild(g);
             frameElements.set(frame.id, g);
@@ -501,7 +498,32 @@ function renderFrames(map) {
         bg.setAttribute('stroke-width', '1.5');
         bg.setAttribute('stroke-dasharray', '6 3');
 
-        const titleEl = g.querySelector('.frame-title');
+        // Overlay layer (above nodes) — title + resize handle
+        let ov = frameOverlayElements.get(frame.id);
+        if (!ov) {
+            ov = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            ov.classList.add('frame');
+            ov.setAttribute('data-frame-id', frame.id);
+
+            const titleEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            titleEl.classList.add('frame-title');
+            ov.appendChild(titleEl);
+
+            const resizeHandle = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            resizeHandle.classList.add('frame-resize-handle');
+            resizeHandle.setAttribute('width', '16');
+            resizeHandle.setAttribute('height', '16');
+            resizeHandle.setAttribute('rx', '2');
+            ov.appendChild(resizeHandle);
+
+            frameOverlayGroup.appendChild(ov);
+            frameOverlayElements.set(frame.id, ov);
+        }
+
+        ov.setAttribute('transform', `translate(${frame.x},${frame.y})`);
+        ov.classList.toggle('selected', frame.id === _selectedFrameId);
+
+        const titleEl = ov.querySelector('.frame-title');
         titleEl.setAttribute('x', '12');
         titleEl.setAttribute('y', '-14');
         titleEl.setAttribute('font-size', '26');
@@ -509,7 +531,7 @@ function renderFrames(map) {
         titleEl.setAttribute('fill', FRAME_TITLE_COLOR[frame.color] || '#374151');
         titleEl.textContent = frame.title || 'Zone';
 
-        const resizeHandle = g.querySelector('.frame-resize-handle');
+        const resizeHandle = ov.querySelector('.frame-resize-handle');
         resizeHandle.setAttribute('x', frame.w - 16);
         resizeHandle.setAttribute('y', frame.h - 16);
     }
@@ -521,6 +543,12 @@ function renderFrames(map) {
             frameElements.delete(id);
         }
     }
+    for (const [id, ov] of frameOverlayElements) {
+        if (!currentFrameIds.has(id)) {
+            ov.remove();
+            frameOverlayElements.delete(id);
+        }
+    }
 }
 
 // Function to clear cache (useful when loading a new map)
@@ -529,7 +557,9 @@ export function clearRenderCache() {
     nodeGroup = null;
     freeLinkGroup = null;
     frameGroup = null;
+    frameOverlayGroup = null;
     frameElements.clear();
+    frameOverlayElements.clear();
     _selectedFrameId = null;
     arrowMarkerCreated = false;
     nodeElements.clear();

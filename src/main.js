@@ -2894,7 +2894,10 @@ function openTaskModal(focusNodeId) {
         }
     }
 
-    // Populate node selector
+    // Determine if we have a specific target node
+    const hasSpecificNode = focusNodeId && focusNodeId !== map.rootId;
+
+    // Populate node selector (hidden when targeting a specific node)
     nodeSelect.innerHTML = '';
     Object.values(map.nodes).forEach(n => {
         const opt = document.createElement('option');
@@ -2903,12 +2906,13 @@ function openTaskModal(focusNodeId) {
         if (n.id === focusNodeId) opt.selected = true;
         nodeSelect.appendChild(opt);
     });
+    nodeSelect.style.display = hasSpecificNode ? 'none' : '';
 
     filter.onchange = renderTaskList;
 
     addBtn.onclick = () => {
         const text = newInput.value.trim();
-        const nodeId = nodeSelect.value;
+        const nodeId = hasSpecificNode ? focusNodeId : nodeSelect.value;
         if (!text || !nodeId) return;
         pushUndo();
         addTask(map, nodeId, text);

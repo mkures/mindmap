@@ -216,8 +216,9 @@ export function layout(map) {
     });
 
     if (isFinite(minX)) {
-        const offsetX = -(minX + maxX) / 2;
-        const offsetY = -(minY + maxY) / 2;
+        const lo = map.layoutOffset || { x: 0, y: 0 };
+        const offsetX = -(minX + maxX) / 2 + lo.x;
+        const offsetY = -(minY + maxY) / 2 + lo.y;
         Object.values(map.nodes).forEach(n => {
             if (n.placement === 'free') return;
             n.x += offsetX;

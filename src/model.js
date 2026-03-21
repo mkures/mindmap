@@ -398,7 +398,6 @@ export function getNodesInFrame(map, frameId) {
     const frame = (map.frames || []).find(f => f.id === frameId);
     if (!frame) return [];
     return Object.values(map.nodes).filter(node => {
-        if (node.placement !== 'free') return false;
         const cx = (node.fx ?? node.x ?? 0) + (node.w || 0) / 2;
         const cy = (node.fy ?? node.y ?? 0) + (node.h || 0) / 2;
         return cx >= frame.x && cx <= frame.x + frame.w

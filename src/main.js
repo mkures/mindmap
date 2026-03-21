@@ -707,7 +707,10 @@ function wireUI() {
             }
         });
     }
-    document.getElementById('searchClose')?.addEventListener('click', closeSearch);
+    document.getElementById('searchClose')?.addEventListener('click', e => {
+        e.stopPropagation();
+        closeSearch();
+    });
     document.getElementById('searchPrev')?.addEventListener('click', () => {
         if (searchMatches.length) {
             searchIndex = (searchIndex - 1 + searchMatches.length) % searchMatches.length;
@@ -1272,11 +1275,14 @@ function startFrameInteraction(frameId, event) {
     }
 
     // Move mode — capture contained nodes and their offsets from frame origin
-    const containedNodes = getNodesInFrame(map, frameId).map(node => ({
+    const contained = getNodesInFrame(map, frameId);
+    const freeNodes = contained.filter(n => n.placement === 'free').map(node => ({
         id: node.id,
         dx: (node.fx ?? node.x ?? 0) - frame.x,
         dy: (node.fy ?? node.y ?? 0) - frame.y,
     }));
+    const hasTreeNodes = contained.some(n => n.placement !== 'free');
+    const lo = map.layoutOffset || { x: 0, y: 0 };
     dragState = {
         mode: 'framemove',
         id: frameId,
@@ -1284,7 +1290,11 @@ function startFrameInteraction(frameId, event) {
         svgOffsetY: svgY - frame.y,
         startX: event.clientX,
         startY: event.clientY,
-        containedNodes,
+        containedNodes: freeNodes,
+        hasTreeNodes,
+        startLayoutOffset: { x: lo.x, y: lo.y },
+        startFrameX: frame.x,
+        startFrameY: frame.y,
         hasMoved: false,
     };
 }
@@ -1354,10 +1364,20 @@ function updateNodeDrag(event) {
         if (frame) {
             frame.x = svgX - dragState.svgOffsetX;
             frame.y = svgY - dragState.svgOffsetY;
+            // Move free nodes with the frame
             dragState.containedNodes.forEach(({ id, dx, dy }) => {
                 const node = map.nodes[id];
                 if (node) { node.fx = frame.x + dx; node.fy = frame.y + dy; }
             });
+            // Move tree nodes via layout offset
+            if (dragState.hasTreeNodes) {
+                const deltaX = frame.x - dragState.startFrameX;
+                const deltaY = frame.y - dragState.startFrameY;
+                map.layoutOffset = {
+                    x: dragState.startLayoutOffset.x + deltaX,
+                    y: dragState.startLayoutOffset.y + deltaY,
+                };
+            }
         }
         markLayoutDirty();
         scheduleUpdate();

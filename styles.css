@@ -1456,6 +1456,7 @@ body.dragging-node {
 }
 
 /* ── Search bar ──────────────────────────────────────────────── */
+.search-bar.hidden { display: none; }
 .search-bar {
     position: absolute;
     top: 90px;

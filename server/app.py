@@ -15,7 +15,6 @@ print("=== Starting MindMap Server ===", flush=True)
 # Get the project root (parent of server/)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 app = Flask(__name__, static_folder=PROJECT_ROOT, static_url_path='')
-print("[STARTUP] app.py loaded - version 2026-03-20-v3-basic-auth-debug", flush=True)
 
 # Configuration
 DB_PATH = os.environ.get('DB_PATH', 'mindmap.db')
@@ -151,12 +150,7 @@ def requires_login(f):
     def decorated(*args, **kwargs):
         user = get_current_user()
         if not user and request.path.startswith('/api/'):
-            print(f"[AUTH] API route {request.path} - no session, trying Basic Auth", flush=True)
             user = _try_basic_auth()
-            if user:
-                print(f"[AUTH] Basic Auth success for {user['username']}", flush=True)
-            else:
-                print(f"[AUTH] Basic Auth failed", flush=True)
         if not user:
             if request.path.startswith('/api/'):
                 return jsonify({'error': 'Non authentifié'}), 401
@@ -170,12 +164,7 @@ def _try_basic_auth():
     """Try HTTP Basic Auth, return user dict or None."""
     auth = request.authorization
     if not auth or not auth.username or not auth.password:
-        print(f"[BASIC_AUTH] No auth header parsed. Authorization header present: {'Authorization' in request.headers}",
-              flush=True)
-        if 'Authorization' in request.headers:
-            print(f"[BASIC_AUTH] Raw header: {request.headers['Authorization'][:30]}...", flush=True)
         return None
-    print(f"[BASIC_AUTH] Parsed credentials: username='{auth.username}'", flush=True)
     conn = get_db()
     cursor = conn.execute(
         'SELECT id, username, display_name, password_hash, is_admin FROM users WHERE username = ?',
@@ -183,11 +172,7 @@ def _try_basic_auth():
     )
     row = cursor.fetchone()
     conn.close()
-    if not row:
-        print(f"[BASIC_AUTH] User '{auth.username}' not found in DB", flush=True)
-        return None
-    if not check_password_hash(row['password_hash'], auth.password):
-        print(f"[BASIC_AUTH] Password mismatch for '{auth.username}'", flush=True)
+    if not row or not check_password_hash(row['password_hash'], auth.password):
         return None
     return dict(row)
 

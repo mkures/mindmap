@@ -45,10 +45,12 @@ python app.py
 2. Connect Railway to your repo
 3. Add a **Volume** (Settings → Volumes): mount path `/data`
 4. Set environment variables:
-   - `BASIC_AUTH_USERNAME` - your username
-   - `BASIC_AUTH_PASSWORD` - your password
+   - `BASIC_AUTH_USERNAME` - admin username
+   - `BASIC_AUTH_PASSWORD` - admin password
    - `DB_PATH` = `/data/mindmap.db`
 5. Deploy (auto-detected from Procfile)
+
+> **Note**: The admin password is re-synchronized from `BASIC_AUTH_PASSWORD` at every deployment. If you change the admin password via the admin panel, it will be overwritten on next deploy. To persist a password change, update the Railway environment variable.
 
 ## Keyboard Shortcuts
 

@@ -87,6 +87,7 @@ def init_db():
             ('maps', 'user_id', 'ALTER TABLE maps ADD COLUMN user_id TEXT'),
             ('folders', 'user_id', 'ALTER TABLE folders ADD COLUMN user_id TEXT'),
             ('maps', 'share_token', 'ALTER TABLE maps ADD COLUMN share_token TEXT'),
+            ('users', 'api_key', 'ALTER TABLE users ADD COLUMN api_key TEXT'),
         ]
         for table, col, sql in migrations:
             try:
@@ -150,7 +151,7 @@ def requires_login(f):
     def decorated(*args, **kwargs):
         user = get_current_user()
         if not user and request.path.startswith('/api/'):
-            user = _try_basic_auth()
+            user = _try_api_auth()
         if not user:
             if request.path.startswith('/api/'):
                 return jsonify({'error': 'Non authentifié'}), 401
@@ -160,17 +161,29 @@ def requires_login(f):
     return decorated
 
 
-def _try_basic_auth():
-    """Try HTTP Basic Auth, return user dict or None."""
+def _try_api_auth():
+    """Try API key (X-API-Key header) then HTTP Basic Auth. Return user dict or None."""
+    # 1. Try API key
+    api_key = request.headers.get('X-API-Key')
+    if api_key:
+        conn = get_db()
+        row = conn.execute(
+            'SELECT id, username, display_name, password_hash, is_admin FROM users WHERE api_key = ?',
+            (api_key,)
+        ).fetchone()
+        conn.close()
+        if row:
+            return dict(row)
+        return None
+    # 2. Fallback to Basic Auth
     auth = request.authorization
     if not auth or not auth.username or not auth.password:
         return None
     conn = get_db()
-    cursor = conn.execute(
+    row = conn.execute(
         'SELECT id, username, display_name, password_hash, is_admin FROM users WHERE username = ?',
         (auth.username,)
-    )
-    row = cursor.fetchone()
+    ).fetchone()
     conn.close()
     if not row or not check_password_hash(row['password_hash'], auth.password):
         return None
@@ -183,7 +196,7 @@ def requires_api_auth(f):
     def decorated(*args, **kwargs):
         user = get_current_user()
         if not user:
-            user = _try_basic_auth()
+            user = _try_api_auth()
         if not user:
             return jsonify({'error': 'Non authentifié'}), 401
         request.current_user = user
@@ -370,7 +383,7 @@ def backup_to_r2():
 def list_users():
     """List all users."""
     conn = get_db()
-    cursor = conn.execute('SELECT id, username, display_name, is_admin, created_at FROM users ORDER BY created_at')
+    cursor = conn.execute('SELECT id, username, display_name, is_admin, api_key, created_at FROM users ORDER BY created_at')
     users = []
     for row in cursor:
         map_count = conn.execute('SELECT COUNT(*) FROM maps WHERE user_id = ? AND (trashed IS NULL OR trashed = 0)', (row['id'],)).fetchone()[0]
@@ -379,6 +392,7 @@ def list_users():
             'username': row['username'],
             'displayName': row['display_name'],
             'isAdmin': bool(row['is_admin']),
+            'hasApiKey': bool(row['api_key']),
             'createdAt': row['created_at'],
             'mapCount': map_count
         })
@@ -466,6 +480,36 @@ def update_user(user_id):
         conn.execute(f'UPDATE users SET {", ".join(updates)} WHERE id = ?', params)
         conn.commit()
 
+    conn.close()
+    return jsonify({'success': True})
+
+
+@app.route('/api/admin/users/<user_id>/api-key', methods=['POST'])
+@requires_admin
+def generate_api_key(user_id):
+    """Generate or regenerate an API key for a user."""
+    conn = get_db()
+    user = conn.execute('SELECT id FROM users WHERE id = ?', (user_id,)).fetchone()
+    if not user:
+        conn.close()
+        return jsonify({'error': 'Utilisateur introuvable'}), 404
+
+    api_key = f'mk_{secrets.token_urlsafe(32)}'
+    now = int(time.time() * 1000)
+    conn.execute('UPDATE users SET api_key = ?, updated_at = ? WHERE id = ?', (api_key, now, user_id))
+    conn.commit()
+    conn.close()
+    return jsonify({'apiKey': api_key})
+
+
+@app.route('/api/admin/users/<user_id>/api-key', methods=['DELETE'])
+@requires_admin
+def revoke_api_key(user_id):
+    """Revoke a user's API key."""
+    conn = get_db()
+    now = int(time.time() * 1000)
+    conn.execute('UPDATE users SET api_key = NULL, updated_at = ? WHERE id = ?', (now, user_id))
+    conn.commit()
     conn.close()
     return jsonify({'success': True})
 

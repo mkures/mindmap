@@ -153,6 +153,13 @@
                 const actions = document.createElement('div');
                 actions.className = 'admin-user-actions';
 
+                const apiKeyBtn = document.createElement('button');
+                apiKeyBtn.className = user.hasApiKey ? 'admin-btn-outline' : 'admin-btn-outline';
+                apiKeyBtn.textContent = user.hasApiKey ? 'Cle API ✓' : 'Generer cle API';
+                apiKeyBtn.style.fontSize = '12px';
+                apiKeyBtn.onclick = () => manageApiKey(user);
+                actions.appendChild(apiKeyBtn);
+
                 const editBtn = document.createElement('button');
                 editBtn.className = 'admin-btn-outline';
                 editBtn.textContent = 'Modifier';
@@ -223,6 +230,32 @@
             } catch {
                 alert('Erreur reseau');
             }
+        }
+
+        async function manageApiKey(user) {
+            if (user.hasApiKey) {
+                const action = prompt(
+                    `L'utilisateur "${user.displayName || user.username}" a deja une cle API.\n\nTapez "regenerer" pour en creer une nouvelle\nou "revoquer" pour la supprimer.`
+                );
+                if (!action) return;
+                if (action.toLowerCase().startsWith('rev')) {
+                    const resp = await fetch(`/api/admin/users/${user.id}/api-key`, { method: 'DELETE' });
+                    if (resp.ok) { alert('Cle API revoquee.'); loadUsers(); }
+                    else alert('Erreur');
+                    return;
+                }
+                if (!action.toLowerCase().startsWith('reg')) return;
+            }
+            try {
+                const resp = await fetch(`/api/admin/users/${user.id}/api-key`, { method: 'POST' });
+                const data = await resp.json();
+                if (resp.ok) {
+                    prompt(`Cle API generee pour ${user.displayName || user.username}.\nCopiez-la maintenant, elle ne sera plus affichee :\n`, data.apiKey);
+                    loadUsers();
+                } else {
+                    alert(data.error || 'Erreur');
+                }
+            } catch { alert('Erreur reseau'); }
         }
 
         userForm.addEventListener('submit', async (e) => {

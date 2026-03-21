@@ -108,6 +108,19 @@ let clipboard = null; // Stores copied subtree
 let selectedLinkId = null; // Currently selected free link
 let linkPreviewEl = null; // Temporary SVG line during link creation
 
+// Undo/Redo history
+let undoStack = [];
+let redoStack = [];
+const MAX_UNDO = 50;
+
+// Search state
+let searchMatches = [];
+let searchIndex = -1;
+let activeTagFilter = null; // tag ID for filtering
+
+// Multi-selection
+let multiSelected = new Set();
+
 const FRAME_COLORS = [
     { label: 'Bleu',   fill: '#dbeafe' },
     { label: 'Vert',   fill: '#dcfce7' },
@@ -208,6 +221,7 @@ function wireUI() {
     if (addChildBtn) {
         addChildBtn.onclick = () => {
             if (!map) return;
+            pushUndo();
             const id = addChild(map, selectedId);
             selectedId = id;
             needsCenterOnRoot = false;
@@ -221,6 +235,7 @@ function wireUI() {
     if (addSiblingBtn) {
         addSiblingBtn.onclick = () => {
             if (!map) return;
+            pushUndo();
             const id = addSibling(map, selectedId);
             if (id) {
                 selectedId = id;
@@ -244,14 +259,15 @@ function wireUI() {
                 markMapChanged();
                 return;
             }
-            const selNode = selectedId ? map.nodes[selectedId] : null;
-            deleteNode(map, selectedId);
-            // After deleting a free node, keep the root selected
-            if (selNode?.placement !== 'free') {
-                selectedId = map.rootId;
+            pushUndo();
+            // Delete multi-selected nodes
+            if (multiSelected.size > 0) {
+                for (const id of multiSelected) deleteNode(map, id);
+                multiSelected.clear();
             } else {
-                selectedId = map.rootId;
+                deleteNode(map, selectedId);
             }
+            selectedId = map.rootId;
             needsCenterOnRoot = false;
             markLayoutDirty();
             update();
@@ -389,6 +405,18 @@ function wireUI() {
         configBtn.onclick = openConfig;
     }
 
+    const historyBtn = document.getElementById('historyBtn');
+    if (historyBtn) {
+        historyBtn.onclick = openHistory;
+    }
+    const historyCloseBtn = document.getElementById('historyCloseBtn');
+    if (historyCloseBtn) {
+        historyCloseBtn.onclick = () => {
+            document.getElementById('historyModal')?.classList.add('hidden');
+            modalBackdrop.classList.add('hidden');
+        };
+    }
+
     if (configCancelBtn) {
         configCancelBtn.addEventListener('click', closeConfig);
     }
@@ -441,7 +469,19 @@ function wireUI() {
         }
         const g = e.target.closest('.node');
         if (g) {
-            selectedId = g.dataset.id;
+            const clickedId = g.dataset.id;
+            if (e.shiftKey) {
+                // Multi-select toggle
+                if (multiSelected.has(clickedId)) {
+                    multiSelected.delete(clickedId);
+                } else {
+                    multiSelected.add(clickedId);
+                }
+                if (!multiSelected.has(selectedId) && selectedId) multiSelected.add(selectedId);
+            } else {
+                multiSelected.clear();
+            }
+            selectedId = clickedId;
             update();
         }
     });
@@ -648,8 +688,49 @@ function wireUI() {
         else if (!e.matches && outlineMode) toggleOutline(false);
     });
 
+    // Search bar events
+    const searchInput = document.getElementById('searchInput');
+    const searchBar = document.getElementById('searchBar');
+    if (searchInput) {
+        searchInput.addEventListener('input', () => runSearch(searchInput.value));
+        searchInput.addEventListener('keydown', e => {
+            if (e.key === 'Escape') { closeSearch(); e.preventDefault(); }
+            else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (e.shiftKey) {
+                    searchIndex = searchMatches.length ? (searchIndex - 1 + searchMatches.length) % searchMatches.length : -1;
+                } else {
+                    searchIndex = searchMatches.length ? (searchIndex + 1) % searchMatches.length : -1;
+                }
+                updateSearchHighlights();
+                navigateToSearchResult();
+            }
+        });
+    }
+    document.getElementById('searchClose')?.addEventListener('click', closeSearch);
+    document.getElementById('searchPrev')?.addEventListener('click', () => {
+        if (searchMatches.length) {
+            searchIndex = (searchIndex - 1 + searchMatches.length) % searchMatches.length;
+            updateSearchHighlights();
+            navigateToSearchResult();
+        }
+    });
+    document.getElementById('searchNext')?.addEventListener('click', () => {
+        if (searchMatches.length) {
+            searchIndex = (searchIndex + 1) % searchMatches.length;
+            updateSearchHighlights();
+            navigateToSearchResult();
+        }
+    });
+
     window.addEventListener('keydown', e => {
         if (!map) return;
+        // Allow Ctrl+F and Escape from search input
+        if (e.key === 'f' && e.ctrlKey) {
+            e.preventDefault();
+            openSearch();
+            return;
+        }
         if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target.isContentEditable) return;
         if (e.key === 'Tab') {
             e.preventDefault();
@@ -674,9 +755,31 @@ function wireUI() {
                 return;
             }
             deleteBtn?.onclick();
-        } else if (e.key === 'f' && e.ctrlKey) {
+        } else if (e.key === 'z' && e.ctrlKey && !e.shiftKey) {
             e.preventDefault();
-            fitToScreen();
+            undo();
+            return;
+        } else if ((e.key === 'y' && e.ctrlKey) || (e.key === 'z' && e.ctrlKey && e.shiftKey)) {
+            e.preventDefault();
+            redo();
+            return;
+        } else if (e.key === 'd' && e.ctrlKey) {
+            e.preventDefault();
+            if (selectedId && selectedId !== map.rootId) {
+                pushUndo();
+                const subtree = copySubtree(map, selectedId);
+                const parentId = map.nodes[selectedId]?.parentId;
+                if (subtree && parentId) {
+                    const newId = pasteSubtree(map, subtree, parentId);
+                    if (newId) {
+                        selectedId = newId;
+                        markLayoutDirty();
+                        update();
+                        markMapChanged();
+                    }
+                }
+            }
+            return;
         } else if (e.key === 'c' && e.ctrlKey) {
             e.preventDefault();
             if (selectedId) {
@@ -686,6 +789,7 @@ function wireUI() {
         } else if (e.key === 'v' && e.ctrlKey) {
             e.preventDefault();
             if (clipboard && selectedId) {
+                pushUndo();
                 const newId = pasteSubtree(map, clipboard, selectedId);
                 if (newId) {
                     selectedId = newId;
@@ -815,11 +919,192 @@ function setCurrentMap(newMap, { center = true, remember = true } = {}) {
     selectLink(null);
     selectFrame(null);
     clearRenderCache();
+    undoStack = [];
+    redoStack = [];
+    multiSelected.clear();
+    activeTagFilter = null;
+    closeSearch();
     if (remember && map?.id) {
         localStorage.setItem(LAST_MAP_STORAGE_KEY, map.id);
     }
     update();
     updateSaveStatus();
+}
+
+// ── Undo / Redo ─────────────────────────────────────────────
+function pushUndo() {
+    if (!map) return;
+    undoStack.push(JSON.stringify(map));
+    if (undoStack.length > MAX_UNDO) undoStack.shift();
+    redoStack = [];
+}
+
+function undo() {
+    if (!undoStack.length || !map) return;
+    redoStack.push(JSON.stringify(map));
+    const prev = JSON.parse(undoStack.pop());
+    const mapId = map.id;
+    map = ensureSettings(prev);
+    map.id = mapId; // preserve ID
+    selectedId = map.rootId;
+    multiSelected.clear();
+    layoutDirty = true;
+    clearRenderCache();
+    update();
+    markMapChanged();
+}
+
+function redo() {
+    if (!redoStack.length || !map) return;
+    undoStack.push(JSON.stringify(map));
+    const next = JSON.parse(redoStack.pop());
+    const mapId = map.id;
+    map = ensureSettings(next);
+    map.id = mapId;
+    selectedId = map.rootId;
+    multiSelected.clear();
+    layoutDirty = true;
+    clearRenderCache();
+    update();
+    markMapChanged();
+}
+
+// ── Search ──────────────────────────────────────────────────
+function openSearch() {
+    const bar = document.getElementById('searchBar');
+    const input = document.getElementById('searchInput');
+    bar.classList.remove('hidden');
+    input.value = '';
+    input.focus();
+    searchMatches = [];
+    searchIndex = -1;
+    updateSearchHighlights();
+}
+
+function closeSearch() {
+    const bar = document.getElementById('searchBar');
+    bar.classList.add('hidden');
+    searchMatches = [];
+    searchIndex = -1;
+    clearSearchHighlights();
+}
+
+function runSearch(query) {
+    if (!map || !query.trim()) {
+        searchMatches = [];
+        searchIndex = -1;
+        updateSearchHighlights();
+        return;
+    }
+    const q = query.toLowerCase();
+    searchMatches = Object.values(map.nodes).filter(n =>
+        (n.text || '').toLowerCase().includes(q) ||
+        (n.body || '').toLowerCase().includes(q)
+    ).map(n => n.id);
+    searchIndex = searchMatches.length > 0 ? 0 : -1;
+    updateSearchHighlights();
+    navigateToSearchResult();
+}
+
+function navigateToSearchResult() {
+    if (searchIndex < 0 || !searchMatches.length) return;
+    const nodeId = searchMatches[searchIndex];
+    const node = map.nodes[nodeId];
+    if (!node) return;
+
+    // Uncollapse ancestors so the node is visible
+    let current = map.nodes[node.parentId];
+    let needsLayout = false;
+    while (current) {
+        if (current.collapsed) { current.collapsed = false; needsLayout = true; }
+        current = map.nodes[current.parentId];
+    }
+    if (needsLayout) { markLayoutDirty(); update(); }
+
+    selectedId = nodeId;
+    // Center on the node
+    const svgW = svgElement.clientWidth;
+    const svgH = svgElement.clientHeight;
+    const nx = (node.fx ?? node.x ?? 0) + (node.w || 80) / 2;
+    const ny = (node.fy ?? node.y ?? 0) + (node.h || 40) / 2;
+    pan.x = svgW / 2 - nx * pan.scale;
+    pan.y = svgH / 2 - ny * pan.scale;
+    update();
+}
+
+function updateSearchHighlights() {
+    const countEl = document.getElementById('searchCount');
+    if (countEl) {
+        countEl.textContent = searchMatches.length > 0
+            ? `${searchIndex + 1}/${searchMatches.length}`
+            : '';
+    }
+    // Apply CSS classes to SVG nodes
+    document.querySelectorAll('.node.search-match, .node.search-current, .node.search-dimmed').forEach(el => {
+        el.classList.remove('search-match', 'search-current', 'search-dimmed');
+    });
+    if (!searchMatches.length) return;
+    const matchSet = new Set(searchMatches);
+    document.querySelectorAll('.node[data-id]').forEach(el => {
+        const id = el.dataset.id;
+        if (id === searchMatches[searchIndex]) {
+            el.classList.add('search-current');
+        } else if (matchSet.has(id)) {
+            el.classList.add('search-match');
+        } else {
+            el.classList.add('search-dimmed');
+        }
+    });
+}
+
+function clearSearchHighlights() {
+    document.querySelectorAll('.node.search-match, .node.search-current, .node.search-dimmed').forEach(el => {
+        el.classList.remove('search-match', 'search-current', 'search-dimmed');
+    });
+}
+
+// ── Expand / Collapse all children ──────────────────────────
+function setCollapseAll(nodeId, collapsed) {
+    if (!map) return;
+    const node = map.nodes[nodeId];
+    if (!node) return;
+    function walk(id) {
+        const n = map.nodes[id];
+        if (!n || !n.children || !n.children.length) return;
+        n.collapsed = collapsed;
+        n.children.forEach(walk);
+    }
+    walk(nodeId);
+    markLayoutDirty();
+    update();
+    markMapChanged();
+}
+
+// ── Tag filter ──────────────────────────────────────────────
+function applyTagFilter(tagId) {
+    if (activeTagFilter === tagId) {
+        activeTagFilter = null; // toggle off
+    } else {
+        activeTagFilter = tagId;
+    }
+    update();
+    updateTagFilterHighlights();
+}
+
+function updateTagFilterHighlights() {
+    if (!activeTagFilter) {
+        document.querySelectorAll('.node.search-dimmed').forEach(el => el.classList.remove('search-dimmed'));
+        return;
+    }
+    document.querySelectorAll('.node[data-id]').forEach(el => {
+        const id = el.dataset.id;
+        const node = map?.nodes[id];
+        if (node && node.tags && node.tags.includes(activeTagFilter)) {
+            el.classList.remove('search-dimmed');
+        } else {
+            el.classList.add('search-dimmed');
+        }
+    });
 }
 
 function update() {
@@ -853,6 +1138,14 @@ function update() {
                 if (map.settings.fontSize) editingInput.style.fontSize = map.settings.fontSize + 'px';
             }
         }
+    }
+    // Apply tag filter highlights after render
+    if (activeTagFilter) updateTagFilterHighlights();
+    // Apply multi-selection highlights
+    if (multiSelected.size > 0) {
+        document.querySelectorAll('.node[data-id]').forEach(el => {
+            el.classList.toggle('multi-selected', multiSelected.has(el.dataset.id));
+        });
     }
 }
 
@@ -1215,6 +1508,7 @@ function endNodeDrag() {
     const targetId = dropTargetId;
     clearDropTarget();
     dragState = null;
+    if (targetId) pushUndo();
     if (targetId && reparentNode(map, id, targetId)) {
         if (targetId === map.rootId) {
             const rootNode = map.nodes[map.rootId];
@@ -1395,6 +1689,57 @@ function finishEditing() {
     markMapChanged();
 }
 
+async function openHistory() {
+    if (!map || !map.id) return;
+    const modal = document.getElementById('historyModal');
+    const list = document.getElementById('historyList');
+    if (!modal || !list) return;
+    list.innerHTML = '<div class="admin-list-empty">Chargement...</div>';
+    modal.classList.remove('hidden');
+    modalBackdrop.classList.remove('hidden');
+    try {
+        const resp = await fetch(`/api/maps/${map.id}/versions`);
+        if (!resp.ok) { list.innerHTML = '<div class="admin-list-empty">Erreur</div>'; return; }
+        const versions = await resp.json();
+        if (!versions.length) {
+            list.innerHTML = '<div class="admin-list-empty">Aucun historique</div>';
+            return;
+        }
+        list.innerHTML = '';
+        versions.forEach(v => {
+            const row = document.createElement('div');
+            row.className = 'admin-list-item';
+            row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:8px 12px;';
+            const date = new Date(v.createdAt);
+            const dateStr = date.toLocaleDateString('fr-FR') + ' ' + date.toLocaleTimeString('fr-FR');
+            const label = document.createElement('span');
+            label.textContent = dateStr;
+            label.style.fontSize = '13px';
+            const restoreBtn = document.createElement('button');
+            restoreBtn.textContent = 'Restaurer';
+            restoreBtn.className = 'secondary';
+            restoreBtn.style.fontSize = '12px';
+            restoreBtn.onclick = async () => {
+                if (!confirm(`Restaurer la version du ${dateStr} ?`)) return;
+                const r = await fetch(`/api/maps/${map.id}/versions/${v.id}`);
+                if (!r.ok) { alert('Erreur'); return; }
+                const data = await r.json();
+                pushUndo();
+                const restored = data.map;
+                restored.id = map.id; // keep same map ID
+                restored.title = map.title;
+                setCurrentMap(restored, { center: true, remember: false });
+                markMapChanged();
+                modal.classList.add('hidden');
+                modalBackdrop.classList.add('hidden');
+            };
+            row.appendChild(label);
+            row.appendChild(restoreBtn);
+            list.appendChild(row);
+        });
+    } catch { list.innerHTML = '<div class="admin-list-empty">Erreur réseau</div>'; }
+}
+
 function openConfig() {
     if (!map) return;
     ensureSettings(map);
@@ -1473,18 +1818,30 @@ function populateTagDefs() {
         name.textContent = tag.name;
         info.appendChild(dot);
         info.appendChild(name);
+        const filterBtn = document.createElement('button');
+        filterBtn.type = 'button';
+        filterBtn.className = 'secondary';
+        filterBtn.textContent = activeTagFilter === tag.id ? '⊘' : '⊙';
+        filterBtn.title = activeTagFilter === tag.id ? 'Retirer le filtre' : 'Filtrer par ce tag';
+        filterBtn.style.cssText = 'width:28px;height:28px;padding:0;font-size:14px;line-height:1;';
+        filterBtn.onclick = () => {
+            applyTagFilter(tag.id);
+            populateTagDefs();
+        };
         const del = document.createElement('button');
         del.type = 'button';
         del.className = 'secondary';
         del.textContent = '×';
         del.style.cssText = 'width:28px;height:28px;padding:0;font-size:16px;line-height:1;';
         del.onclick = () => {
+            if (activeTagFilter === tag.id) activeTagFilter = null;
             removeTagDef(map, tag.id);
             populateTagDefs();
             update();
             markMapChanged();
         };
         row.appendChild(info);
+        row.appendChild(filterBtn);
         row.appendChild(del);
         container.appendChild(row);
     });
@@ -1650,6 +2007,23 @@ function showNodeContextMenu(x, y, nodeId) {
         imageInput.click();
     };
     menu.appendChild(imgBtn);
+
+    // Expand/collapse children (only if node has children)
+    if (node.children && node.children.length > 0) {
+        const sepCollapse = document.createElement('div');
+        sepCollapse.className = 'context-menu-sep';
+        menu.appendChild(sepCollapse);
+
+        const expandBtn = document.createElement('button');
+        expandBtn.textContent = '▸ Déplier tous les enfants';
+        expandBtn.onclick = () => { menu.remove(); pushUndo(); setCollapseAll(nodeId, false); };
+        menu.appendChild(expandBtn);
+
+        const collapseBtn = document.createElement('button');
+        collapseBtn.textContent = '▾ Replier tous les enfants';
+        collapseBtn.onclick = () => { menu.remove(); pushUndo(); setCollapseAll(nodeId, true); };
+        menu.appendChild(collapseBtn);
+    }
 
     // Tags section (only if tags exist)
     if (tags.length > 0) {

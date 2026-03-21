@@ -80,6 +80,16 @@ def init_db():
             )
         ''')
 
+        # Map versions table (history)
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS map_versions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                map_id TEXT NOT NULL,
+                data TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            )
+        ''')
+
         # Add columns if they don't exist (migration-safe)
         migrations = [
             ('maps', 'folder_id', 'ALTER TABLE maps ADD COLUMN folder_id TEXT'),
@@ -644,6 +654,17 @@ def save_map():
             (map_id, title, json.dumps(map_content), now, now, user['id'])
         )
 
+    # Save version snapshot (keep last 30 per map)
+    conn.execute(
+        'INSERT INTO map_versions (map_id, data, created_at) VALUES (?, ?, ?)',
+        (map_id, json.dumps(map_content), now)
+    )
+    conn.execute('''
+        DELETE FROM map_versions WHERE map_id = ? AND id NOT IN (
+            SELECT id FROM map_versions WHERE map_id = ? ORDER BY created_at DESC LIMIT 30
+        )
+    ''', (map_id, map_id))
+
     conn.commit()
     conn.close()
 
@@ -652,6 +673,51 @@ def save_map():
         'title': title,
         'updatedAt': now
     })
+
+
+@app.route('/api/maps/<map_id>/versions', methods=['GET'])
+@requires_login
+def list_versions(map_id):
+    """List version history for a map."""
+    user = request.current_user
+    conn = get_db()
+    map_row = conn.execute('SELECT user_id FROM maps WHERE id = ?', (map_id,)).fetchone()
+    if not map_row:
+        conn.close()
+        return jsonify({'error': 'Map introuvable'}), 404
+    if map_row['user_id'] != user['id'] and not user.get('is_admin'):
+        conn.close()
+        return jsonify({'error': 'Accès refusé'}), 403
+    cursor = conn.execute(
+        'SELECT id, created_at FROM map_versions WHERE map_id = ? ORDER BY created_at DESC',
+        (map_id,)
+    )
+    versions = [{'id': row['id'], 'createdAt': row['created_at']} for row in cursor]
+    conn.close()
+    return jsonify(versions)
+
+
+@app.route('/api/maps/<map_id>/versions/<int:version_id>', methods=['GET'])
+@requires_login
+def get_version(map_id, version_id):
+    """Get a specific version of a map."""
+    user = request.current_user
+    conn = get_db()
+    map_row = conn.execute('SELECT user_id FROM maps WHERE id = ?', (map_id,)).fetchone()
+    if not map_row:
+        conn.close()
+        return jsonify({'error': 'Map introuvable'}), 404
+    if map_row['user_id'] != user['id'] and not user.get('is_admin'):
+        conn.close()
+        return jsonify({'error': 'Accès refusé'}), 403
+    version = conn.execute(
+        'SELECT data, created_at FROM map_versions WHERE id = ? AND map_id = ?',
+        (version_id, map_id)
+    ).fetchone()
+    conn.close()
+    if not version:
+        return jsonify({'error': 'Version introuvable'}), 404
+    return jsonify({'map': json.loads(version['data']), 'createdAt': version['created_at']})
 
 
 @app.route('/api/maps/<map_id>', methods=['DELETE'])

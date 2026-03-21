@@ -38,6 +38,7 @@
             <button id="exportMdBtn">MD</button>
             <button id="shareBtn">Partager</button>
             <span class="tb-sep"></span>
+            <button id="historyBtn">Historique</button>
             <button id="configBtn">Config</button>
             <button id="helpBtn">Aide</button>
             <span class="tb-sep"></span>
@@ -57,6 +58,14 @@
         </svg>
         <div id="outlineView" class="hidden">
             <div id="outlineContent"></div>
+        </div>
+        <!-- Search bar -->
+        <div id="searchBar" class="search-bar hidden">
+            <input id="searchInput" type="text" placeholder="Rechercher un noeud…" autocomplete="off" spellcheck="false">
+            <span id="searchCount" class="search-count"></span>
+            <button id="searchPrev" class="btn-icon" title="Precedent">▲</button>
+            <button id="searchNext" class="btn-icon" title="Suivant">▼</button>
+            <button id="searchClose" class="btn-icon" title="Fermer">✕</button>
         </div>
     </div>
     <div id="modalBackdrop" class="modal-backdrop hidden"></div>
@@ -120,7 +129,7 @@
                     <dl class="help-shortcuts">
                         <dt>Clic + glisser (fond)</dt><dd>Deplacer la vue</dd>
                         <dt>Molette</dt><dd>Zoomer / Dezoomer</dd>
-                        <dt>Ctrl + F</dt><dd>Centrer et ajuster la carte</dd>
+                        <dt>Ctrl + F</dt><dd>Rechercher dans les noeuds</dd>
                     </dl>
                 </div>
                 <div class="help-section">
@@ -139,6 +148,9 @@
                     <dl class="help-shortcuts">
                         <dt>Ctrl + Fleches</dt><dd>Reordonner les voisins</dd>
                         <dt>Ctrl + C / Ctrl + V</dt><dd>Copier / Coller un sous-arbre</dd>
+                        <dt>Ctrl + D</dt><dd>Dupliquer le noeud</dd>
+                        <dt>Ctrl + Z / Ctrl + Y</dt><dd>Annuler / Refaire</dd>
+                        <dt>Shift + clic</dt><dd>Multi-selection</dd>
                     </dl>
                 </div>
                 <div class="help-section">
@@ -192,6 +204,16 @@
                 </div>
             </div>
             <div id="noteViewerContainer" class="note-viewer-content"></div>
+        </div>
+    </div>
+    <!-- History Modal -->
+    <div id="historyModal" class="modal hidden">
+        <div class="modal-content">
+            <h2>Historique des versions</h2>
+            <div id="historyList" class="map-list" style="max-height:400px;overflow-y:auto;"></div>
+            <div class="modal-actions">
+                <button type="button" id="historyCloseBtn">Fermer</button>
+            </div>
         </div>
     </div>
     <!-- marked.js for Markdown rendering -->

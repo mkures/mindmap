@@ -1281,7 +1281,7 @@ function startFrameInteraction(frameId, event) {
         dx: (node.fx ?? node.x ?? 0) - frame.x,
         dy: (node.fy ?? node.y ?? 0) - frame.y,
     }));
-    const hasTreeNodes = contained.some(n => n.placement !== 'free');
+    const hasTreeRoot = contained.some(n => n.id === map.rootId);
     const lo = map.layoutOffset || { x: 0, y: 0 };
     dragState = {
         mode: 'framemove',
@@ -1291,7 +1291,7 @@ function startFrameInteraction(frameId, event) {
         startX: event.clientX,
         startY: event.clientY,
         containedNodes: freeNodes,
-        hasTreeNodes,
+        hasTreeRoot,
         startLayoutOffset: { x: lo.x, y: lo.y },
         startFrameX: frame.x,
         startFrameY: frame.y,
@@ -1370,7 +1370,7 @@ function updateNodeDrag(event) {
                 if (node) { node.fx = frame.x + dx; node.fy = frame.y + dy; }
             });
             // Move tree nodes via layout offset
-            if (dragState.hasTreeNodes) {
+            if (dragState.hasTreeRoot) {
                 const deltaX = frame.x - dragState.startFrameX;
                 const deltaY = frame.y - dragState.startFrameY;
                 map.layoutOffset = {

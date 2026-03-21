@@ -28,7 +28,7 @@ import {
 import { layout } from './layout.js';
 import { render, clearRenderCache, setSelectedLinkId, setSelectedFrameId } from './render.js';
 import { exportMarkdown, exportImage, exportPdf } from './export.js';
-import { initOutline, renderOutline } from './outline.js';
+import { initOutline, renderOutline, isMobileOutline } from './outline.js';
 import { getTemplates, buildFromTemplate } from './templates.js';
 import { initCommandPalette, openCommandPalette } from './command-palette.js';
 import { openEmojiPicker, closeEmojiPicker } from './emoji-picker.js';
@@ -2783,14 +2783,20 @@ function toggleOutline(force) {
         if (outlineView) outlineView.classList.remove('hidden');
         if (outlineBtn) outlineBtn.classList.add('active');
         if (map) {
+            const mobile = isMobileOutline();
             initOutline(map, outlineContent, {
                 onSelectNode: (id) => {
                     selectedId = id;
-                    outlineMode = false;
-                    toggleOutline(false);
-                    update();
+                    if (!mobile) {
+                        // Desktop: switch back to canvas
+                        outlineMode = false;
+                        toggleOutline(false);
+                        update();
+                    }
+                    // Mobile: stay in outline, drill-down handles navigation
                 },
                 onAddChild: (parentId, text) => {
+                    pushUndo();
                     const id = addChild(map, parentId);
                     if (id) {
                         map.nodes[id].text = text;
@@ -2802,6 +2808,15 @@ function toggleOutline(force) {
                 },
                 onExportMd: () => {
                     if (map) exportMarkdown(map);
+                },
+                onNodeChanged: (id) => {
+                    markLayoutDirty();
+                    update();
+                    markMapChanged();
+                },
+                onEditNote: (id) => {
+                    selectedId = id;
+                    openNoteModal(id);
                 }
             });
         }

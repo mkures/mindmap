@@ -1840,3 +1840,281 @@ body.dragging-node {
     stroke-width: 1;
     stroke-dasharray: 4 3;
 }
+
+/* ── Outline chevrons (desktop) ── */
+.outline-chevron {
+    cursor: pointer;
+    font-size: 11px;
+    width: 16px;
+    text-align: center;
+    flex-shrink: 0;
+    color: var(--text-secondary);
+    user-select: none;
+}
+.outline-chevron:hover {
+    color: var(--accent);
+}
+.outline-chevron-spacer {
+    width: 16px;
+    flex-shrink: 0;
+}
+
+/* ══════════════════════════════════════════════════════
+   MOBILE RESPONSIVE (≤768px)
+   ══════════════════════════════════════════════════════ */
+@media (max-width: 768px) and (pointer: coarse) {
+    /* Hide desktop-only UI */
+    #toolbar { display: none !important; }
+    .minimap { display: none !important; }
+    .zoom-hud { display: none !important; }
+    #searchBar { display: none !important; }
+
+    /* Map header: compact for mobile */
+    #mapHeader {
+        flex-wrap: wrap;
+        padding: 8px 12px;
+        gap: 4px;
+    }
+    #mapTitleInput {
+        font-size: 16px;
+        min-width: 0;
+        flex: 1;
+    }
+    .map-header-actions {
+        gap: 4px;
+    }
+    .map-header-actions button {
+        font-size: 11px;
+        padding: 4px 8px;
+    }
+
+    /* Outline takes full viewport */
+    #outlineView {
+        position: fixed !important;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 50;
+        background: var(--canvas);
+    }
+    #outlineContent {
+        max-width: 100%;
+        padding: 0 12px 80px;
+    }
+
+    /* Hide SVG canvas entirely */
+    #mindmap { display: none !important; }
+}
+
+/* ── Mobile breadcrumb ── */
+.mobile-breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 10px 4px;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+    border-bottom: 1px solid var(--border-subtle);
+    margin-bottom: 4px;
+}
+.mobile-breadcrumb-sep {
+    color: var(--text-tertiary);
+    font-size: 14px;
+    flex-shrink: 0;
+}
+.mobile-breadcrumb-btn {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    color: var(--text-secondary);
+    background: none;
+    border: none;
+    padding: 6px 8px;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+}
+.mobile-breadcrumb-btn:hover,
+.mobile-breadcrumb-btn:active {
+    background: var(--surface-hover);
+}
+.mobile-breadcrumb-btn.active {
+    color: var(--text);
+    font-weight: 600;
+}
+
+/* ── Mobile node header ── */
+.mobile-node-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 4px 8px;
+}
+.mobile-back-btn {
+    font-size: 20px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--accent);
+    padding: 8px;
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+}
+.mobile-back-btn:active {
+    background: var(--surface-hover);
+}
+.mobile-node-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+    margin: 0;
+    flex: 1;
+    line-height: 1.3;
+}
+.mobile-edit-btn {
+    font-size: 16px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    padding: 8px;
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+}
+.mobile-edit-btn:active {
+    background: var(--surface-hover);
+    color: var(--accent);
+}
+
+/* ── Mobile tree items ── */
+.mobile-tree .mobile-item {
+    padding: 0 !important;
+}
+.mobile-row {
+    min-height: 48px;
+    padding: 10px 8px !important;
+    gap: 10px !important;
+    border-bottom: 1px solid var(--border-subtle);
+}
+.mobile-row:active {
+    background: var(--surface-hover);
+}
+.mobile-child-count {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    background: var(--surface-hover);
+    border-radius: 10px;
+    padding: 2px 7px;
+    flex-shrink: 0;
+}
+.mobile-chevron {
+    font-size: 16px;
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+}
+.mobile-note-icon {
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+/* ── Mobile note accordion ── */
+.mobile-note-accordion {
+    overflow: hidden;
+    max-height: 0;
+    transition: max-height 0.25s ease;
+}
+.mobile-note-accordion.open {
+    max-height: 500px;
+}
+.mobile-note-toggle {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 6px 8px;
+    display: block;
+    width: 100%;
+    text-align: left;
+    min-height: 36px;
+}
+.mobile-note-toggle:active {
+    color: var(--accent);
+}
+.mobile-note-arrow {
+    display: inline-block;
+    width: 14px;
+}
+.mobile-note-content {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text);
+    background: var(--surface-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    margin: 0 8px 4px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.mobile-note-edit-btn {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    color: var(--accent);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 6px 12px;
+    margin-bottom: 4px;
+    min-height: 36px;
+}
+.mobile-note-edit-btn:active {
+    text-decoration: underline;
+}
+
+/* ── Mobile inline edit ── */
+.mobile-inline-edit {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+    background: var(--surface-raised);
+    border: 2px solid var(--accent);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    width: 100%;
+    flex: 1;
+    outline: none;
+    box-sizing: border-box;
+}
+
+/* ── Mobile misc ── */
+.mobile-empty {
+    color: var(--text-tertiary);
+    font-size: 14px;
+    text-align: center;
+    padding: 32px 16px;
+    font-style: italic;
+}
+.mobile-section-sep {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-tertiary);
+    padding: 16px 8px 6px;
+    border-top: 1px solid var(--border-subtle);
+    margin-top: 8px;
+}

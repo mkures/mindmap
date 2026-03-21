@@ -5,6 +5,7 @@ import sqlite3
 import uuid
 import time
 import secrets
+import threading
 from functools import wraps
 from flask import Flask, request, jsonify, send_from_directory, Response, session, redirect, url_for, after_this_request
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -1285,8 +1286,95 @@ def static_files(path):
     return send_from_directory(app.static_folder, path)
 
 
+# ── Scheduled R2 Backup ──────────────────────────────────────
+BACKUP_INTERVAL = int(os.environ.get('R2_BACKUP_INTERVAL', 6 * 3600))  # default 6h
+
+def _scheduled_r2_backup():
+    """Run R2 backup in background, reschedule next run."""
+    r2_endpoint = os.environ.get('R2_ENDPOINT_URL')
+    if not r2_endpoint:
+        return  # R2 not configured, stop silently
+
+    try:
+        import boto3
+        from botocore.config import Config
+    except ImportError:
+        print('[R2 BACKUP] boto3 not installed, skipping scheduled backup', flush=True)
+        return
+
+    r2_access_key = os.environ.get('R2_ACCESS_KEY_ID')
+    r2_secret_key = os.environ.get('R2_SECRET_ACCESS_KEY')
+    r2_bucket = os.environ.get('R2_BUCKET_NAME', 'mindmap-backups')
+    r2_key = os.environ.get('R2_BACKUP_KEY', 'mindmap.db')
+
+    if not r2_access_key or not r2_secret_key:
+        print('[R2 BACKUP] Missing R2 credentials, skipping', flush=True)
+        return
+
+    try:
+        import tempfile
+        db_path = os.path.abspath(DB_PATH)
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
+        tmp.close()
+
+        src_conn = sqlite3.connect(db_path)
+        dst_conn = sqlite3.connect(tmp.name)
+        src_conn.backup(dst_conn)
+        src_conn.close()
+        dst_conn.close()
+
+        s3 = boto3.client(
+            's3',
+            endpoint_url=r2_endpoint,
+            aws_access_key_id=r2_access_key,
+            aws_secret_access_key=r2_secret_key,
+            config=Config(signature_version='s3v4'),
+            region_name='auto'
+        )
+        timestamp = time.strftime('%Y%m%d-%H%M%S')
+        base = r2_key[:-3] if r2_key.endswith('.db') else r2_key
+        key = f'{base}-{timestamp}.db'
+        s3.upload_file(tmp.name, r2_bucket, key)
+        os.unlink(tmp.name)
+        print(f'[R2 BACKUP] Success: {key} -> {r2_bucket}', flush=True)
+
+        # Cleanup backups older than retention period
+        retention_days = int(os.environ.get('R2_BACKUP_RETENTION_DAYS', 15))
+        _cleanup_old_backups(s3, r2_bucket, base, retention_days)
+    except Exception as e:
+        print(f'[R2 BACKUP] Error: {e}', flush=True)
+    finally:
+        # Reschedule next backup
+        _schedule_next_backup()
+
+
+def _cleanup_old_backups(s3, bucket, prefix, retention_days):
+    """Delete R2 backups older than retention_days."""
+    from datetime import datetime, timedelta
+    cutoff = datetime.utcnow() - timedelta(days=retention_days)
+    try:
+        response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
+        for obj in response.get('Contents', []):
+            if obj['LastModified'].replace(tzinfo=None) < cutoff:
+                s3.delete_object(Bucket=bucket, Key=obj['Key'])
+                print(f'[R2 BACKUP] Deleted old backup: {obj["Key"]}', flush=True)
+    except Exception as e:
+        print(f'[R2 BACKUP] Cleanup error: {e}', flush=True)
+
+
+def _schedule_next_backup():
+    t = threading.Timer(BACKUP_INTERVAL, _scheduled_r2_backup)
+    t.daemon = True
+    t.start()
+
+
 # Initialize database on startup
 init_db()
+
+# Start scheduled R2 backup if configured
+if os.environ.get('R2_ENDPOINT_URL'):
+    print(f'[R2 BACKUP] Scheduled every {BACKUP_INTERVAL // 3600}h', flush=True)
+    _schedule_next_backup()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

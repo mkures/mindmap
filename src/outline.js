@@ -95,11 +95,24 @@ function renderDesktopOutline() {
             if (_callbacks?.onSelectNode) _callbacks.onSelectNode(node.id);
         });
 
+        // Task count badge
+        if (node.tasks && node.tasks.length > 0) {
+            const doneCount = node.tasks.filter(t => t.done).length;
+            const taskBadge = document.createElement('span');
+            taskBadge.className = 'mobile-task-count';
+            taskBadge.textContent = `✓ ${doneCount}/${node.tasks.length}`;
+            row.appendChild(taskBadge);
+        }
+
         li.appendChild(row);
 
         const body = node.body || node.note;
         if (body) {
-            li.appendChild(buildNotePreview(body));
+            li.appendChild(buildNoteAccordion(node.id, body, false));
+        }
+
+        if (node.tasks && node.tasks.length > 0) {
+            li.appendChild(buildTaskSection(node.id, node.tasks));
         }
 
         list.appendChild(li);
@@ -503,12 +516,26 @@ function renderTreeNode(nodeId, parentEl, depth) {
         if (_callbacks?.onSelectNode) _callbacks.onSelectNode(nodeId);
     });
 
+    // Task count badge
+    if (node.tasks && node.tasks.length > 0) {
+        const doneCount = node.tasks.filter(t => t.done).length;
+        const taskBadge = document.createElement('span');
+        taskBadge.className = 'mobile-task-count';
+        taskBadge.textContent = `✓ ${doneCount}/${node.tasks.length}`;
+        row.appendChild(taskBadge);
+    }
+
     li.appendChild(row);
 
-    // Note preview
+    // Note accordion (with MD rendering)
     const body = node.body || node.note;
     if (body) {
-        li.appendChild(buildNotePreview(body));
+        li.appendChild(buildNoteAccordion(nodeId, body, false));
+    }
+
+    // Task section
+    if (node.tasks && node.tasks.length > 0) {
+        li.appendChild(buildTaskSection(nodeId, node.tasks));
     }
 
     parentEl.appendChild(li);

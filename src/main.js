@@ -23,7 +23,8 @@ import {
     addFrame,
     deleteFrame,
     updateFrame,
-    getNodesInFrame
+    getNodesInFrame,
+    isRootInFrame
 } from './model.js';
 import { layout } from './layout.js';
 import { render, clearRenderCache, setSelectedLinkId, setSelectedFrameId } from './render.js';
@@ -1274,14 +1275,14 @@ function startFrameInteraction(frameId, event) {
         return;
     }
 
-    // Move mode — capture contained nodes and their offsets from frame origin
-    const contained = getNodesInFrame(map, frameId);
-    const freeNodes = contained.filter(n => n.placement === 'free').map(node => ({
+    // Move mode — capture contained free nodes and their offsets from frame origin
+    const containedNodes = getNodesInFrame(map, frameId).map(node => ({
         id: node.id,
         dx: (node.fx ?? node.x ?? 0) - frame.x,
         dy: (node.fy ?? node.y ?? 0) - frame.y,
     }));
-    const hasTreeRoot = contained.some(n => n.id === map.rootId);
+    // Check if this frame contains the main tree root (separate from free nodes)
+    const hasTreeRoot = isRootInFrame(map, frameId);
     const lo = map.layoutOffset || { x: 0, y: 0 };
     dragState = {
         mode: 'framemove',
@@ -1290,7 +1291,7 @@ function startFrameInteraction(frameId, event) {
         svgOffsetY: svgY - frame.y,
         startX: event.clientX,
         startY: event.clientY,
-        containedNodes: freeNodes,
+        containedNodes,
         hasTreeRoot,
         startLayoutOffset: { x: lo.x, y: lo.y },
         startFrameX: frame.x,

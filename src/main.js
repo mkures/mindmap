@@ -1254,6 +1254,11 @@ function setCurrentMap(newMap, { center = true, remember = true } = {}) {
     }
     update();
     updateSaveStatus();
+    updateUndoRedoButtons();
+    // Re-render outline if in outline mode (important for mobile)
+    if (outlineMode && map) {
+        toggleOutline(true);
+    }
 }
 
 // ── Undo / Redo ─────────────────────────────────────────────

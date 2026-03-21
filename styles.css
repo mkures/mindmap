@@ -1862,12 +1862,13 @@ body.dragging-node {
 /* ══════════════════════════════════════════════════════
    MOBILE RESPONSIVE (≤768px)
    ══════════════════════════════════════════════════════ */
-@media (max-width: 768px) and (pointer: coarse) {
-    /* Hide desktop-only UI */
+@media (max-width: 768px) {
+    /* Hide desktop-only UI immediately (no flash) */
     #toolbar { display: none !important; }
     .minimap { display: none !important; }
     .zoom-hud { display: none !important; }
     #searchBar { display: none !important; }
+    #mindmap { display: none !important; }
 
     /* Map header: compact for mobile */
     #mapHeader {
@@ -1888,23 +1889,15 @@ body.dragging-node {
         padding: 4px 8px;
     }
 
-    /* Outline takes full viewport */
+    /* Show outline immediately, fill remaining space below header */
     #outlineView {
-        position: fixed !important;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        z-index: 50;
-        background: var(--canvas);
+        display: block !important;
+        flex: 1;
     }
     #outlineContent {
         max-width: 100%;
         padding: 0 12px 80px;
     }
-
-    /* Hide SVG canvas entirely */
-    #mindmap { display: none !important; }
 }
 
 /* ── Mobile breadcrumb ── */

@@ -25,6 +25,15 @@ const FRAME_STROKE = {
     '#f3f4f6': '#d1d5db',
 };
 
+const FRAME_TITLE_COLOR = {
+    '#dbeafe': '#1e40af',
+    '#dcfce7': '#166534',
+    '#fef9c3': '#854d0e',
+    '#fce7f3': '#9d174d',
+    '#ede9fe': '#5b21b6',
+    '#f3f4f6': '#374151',
+};
+
 export function setSelectedFrameId(id) {
     _selectedFrameId = id;
 }
@@ -497,7 +506,7 @@ function renderFrames(map) {
         titleEl.setAttribute('y', '-14');
         titleEl.setAttribute('font-size', '26');
         titleEl.setAttribute('font-weight', '600');
-        titleEl.setAttribute('fill', stroke);
+        titleEl.setAttribute('fill', FRAME_TITLE_COLOR[frame.color] || '#374151');
         titleEl.textContent = frame.title || 'Zone';
 
         const resizeHandle = g.querySelector('.frame-resize-handle');

@@ -295,7 +295,7 @@ function renderMobileOutline() {
                     const accordion = li.querySelector('.mobile-note-accordion');
                     if (accordion) {
                         const isOpen = accordion.classList.toggle('open');
-                        const arrow = accordion.querySelector('.mobile-note-arrow');
+                        const arrow = li.querySelector('.mobile-note-arrow');
                         if (arrow) arrow.textContent = isOpen ? '▾' : '▸';
                     }
                 });
@@ -312,7 +312,7 @@ function renderMobileOutline() {
                     const accordion = li.querySelector('.mobile-note-accordion');
                     if (accordion) {
                         const isOpen = accordion.classList.toggle('open');
-                        const arrow = accordion.querySelector('.mobile-note-arrow');
+                        const arrow = li.querySelector('.mobile-note-arrow');
                         if (arrow) arrow.textContent = isOpen ? '▾' : '▸';
                     }
                 }
@@ -363,14 +363,18 @@ function truncateText(text, maxLen) {
 
 function buildNoteAccordion(nodeId, body, startOpen) {
     const wrapper = document.createElement('div');
-    wrapper.className = 'mobile-note-accordion' + (startOpen ? ' open' : '');
+    wrapper.className = 'note-accordion-wrapper';
 
     const toggle = document.createElement('button');
     toggle.className = 'mobile-note-toggle';
     toggle.innerHTML = '<span class="mobile-note-arrow">' + (startOpen ? '▾' : '▸') + '</span> Note';
+
+    const collapsible = document.createElement('div');
+    collapsible.className = 'mobile-note-accordion' + (startOpen ? ' open' : '');
+
     toggle.addEventListener('click', (e) => {
         e.stopPropagation();
-        const isOpen = wrapper.classList.toggle('open');
+        const isOpen = collapsible.classList.toggle('open');
         toggle.querySelector('.mobile-note-arrow').textContent = isOpen ? '▾' : '▸';
     });
 
@@ -391,9 +395,11 @@ function buildNoteAccordion(nodeId, body, startOpen) {
         if (_callbacks?.onEditNote) _callbacks.onEditNote(nodeId);
     });
 
+    collapsible.appendChild(content);
+    collapsible.appendChild(editNoteBtn);
+
     wrapper.appendChild(toggle);
-    wrapper.appendChild(content);
-    wrapper.appendChild(editNoteBtn);
+    wrapper.appendChild(collapsible);
     return wrapper;
 }
 

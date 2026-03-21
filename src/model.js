@@ -143,9 +143,19 @@ export function reparentNode(map, nodeId, newParentId) {
     if (!node || !newParent) return false;
     if (node.parentId === newParentId) return false;
     if (isDescendant(map, nodeId, newParentId)) return false;
+    // Remove from old parent (if any)
     const oldParent = map.nodes[node.parentId];
-    if (!oldParent) return false;
-    oldParent.children = oldParent.children.filter(id => id !== nodeId);
+    if (oldParent) {
+        oldParent.children = oldParent.children.filter(id => id !== nodeId);
+    }
+    // Clean up placement when moving between trees
+    if (node.placement === 'free') {
+        delete node.placement;
+        delete node.nodeType;
+        delete node.fx;
+        delete node.fy;
+    }
+    delete node.side;
     newParent.children.push(nodeId);
     node.parentId = newParentId;
     map.updatedAt = Date.now();

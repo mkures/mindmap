@@ -1136,9 +1136,9 @@ function updateNodeDrag(event) {
         clearDropTarget();
         return;
     }
-    // Can only reparent to tree nodes
+    // Can reparent to tree nodes and free bubbles (not cards)
     const targetNode = map.nodes[targetId];
-    if (targetNode?.placement === 'free') {
+    if (targetNode?.placement === 'free' && targetNode?.nodeType === 'card') {
         clearDropTarget();
         return;
     }

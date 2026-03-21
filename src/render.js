@@ -90,7 +90,7 @@ export function render(map, svg, selectedId) {
     // Update or create tree links (only for tree-placed visible nodes)
     for (const id of visibleNodeIds) {
         const node = map.nodes[id];
-        if (node.parentId && node.placement !== 'free') {
+        if (node.parentId && !(node.placement === 'free' && node.fx != null)) {
             const parent = map.nodes[node.parentId];
             if (!parent || !isFinite(node.x) || !isFinite(parent.x)) continue;
 

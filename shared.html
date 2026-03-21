@@ -59,6 +59,58 @@
             color: var(--text-secondary);
             font-size: 16px;
         }
+        /* Note modal */
+        #sharedNoteOverlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 9000;
+            background: rgba(0,0,0,0.5);
+            justify-content: center;
+            align-items: center;
+        }
+        #sharedNoteOverlay.open { display: flex; }
+        #sharedNoteBox {
+            background: var(--surface);
+            border-radius: var(--radius-md, 8px);
+            padding: 20px 24px;
+            max-width: 520px;
+            width: 90vw;
+            max-height: 70vh;
+            overflow-y: auto;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+        }
+        #sharedNoteTitle {
+            font-weight: 700;
+            font-size: 14px;
+            color: var(--text);
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+        #sharedNoteBody {
+            font-size: 13px;
+            line-height: 1.6;
+            color: var(--text-secondary);
+        }
+        #sharedNoteBody h1, #sharedNoteBody h2, #sharedNoteBody h3 {
+            color: var(--text);
+            margin: 12px 0 6px;
+        }
+        #sharedNoteBody ul, #sharedNoteBody ol { padding-left: 20px; }
+        #sharedNoteBody code {
+            background: var(--surface-hover);
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        #sharedNoteBody pre {
+            background: var(--surface-hover);
+            padding: 10px;
+            border-radius: 6px;
+            overflow-x: auto;
+        }
+        .collapse-indicator { cursor: pointer; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
 </head>
@@ -74,9 +126,19 @@
         </svg>
     </div>
     <div id="sharedError" class="hidden">Carte introuvable ou lien expiré.</div>
+
+    <!-- Note overlay -->
+    <div id="sharedNoteOverlay">
+        <div id="sharedNoteBox">
+            <div id="sharedNoteTitle"></div>
+            <div id="sharedNoteBody"></div>
+        </div>
+    </div>
+
     <script type="module">
         import { layout } from '/src/layout.js';
         import { render } from '/src/render.js';
+        import { toggleCollapse } from '/src/model.js';
 
         const token = location.pathname.split('/s/')[1];
         if (!token) {
@@ -101,8 +163,12 @@
                 const viewport = document.getElementById('sharedViewport');
                 let pan = { x: 0, y: 0, scale: 1 };
 
-                layout(map);
-                render(map, viewport, null);
+                function redraw() {
+                    layout(map);
+                    render(map, viewport, null);
+                }
+
+                redraw();
 
                 // Center view
                 function fit() {
@@ -120,9 +186,65 @@
                 requestAnimationFrame(fit);
                 document.getElementById('sharedFit').onclick = fit;
 
-                // Pan & zoom (readonly)
+                // ── Collapse/expand on click ──
+                svg.addEventListener('click', e => {
+                    // Collapse indicator click
+                    const collapseEl = e.target.closest('.collapse-indicator');
+                    if (collapseEl) {
+                        const nodeEl = collapseEl.closest('.node');
+                        if (nodeEl) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toggleCollapse(map, nodeEl.dataset.id);
+                            redraw();
+                            viewport.setAttribute('transform', `translate(${pan.x},${pan.y}) scale(${pan.scale})`);
+                            return;
+                        }
+                    }
+
+                    // Node click — expand if collapsed, or show note
+                    const nodeEl = e.target.closest('.node');
+                    if (nodeEl) {
+                        const nodeId = nodeEl.dataset.id;
+                        const node = map.nodes[nodeId];
+                        if (!node) return;
+
+                        // If collapsed, expand on click
+                        if (node.collapsed) {
+                            toggleCollapse(map, nodeId);
+                            redraw();
+                            viewport.setAttribute('transform', `translate(${pan.x},${pan.y}) scale(${pan.scale})`);
+                            return;
+                        }
+
+                        // If has a note/body, show it
+                        if (node.body) {
+                            showNote(node.text || 'Note', node.body);
+                        }
+                    }
+                });
+
+                // ── Note overlay ──
+                const noteOverlay = document.getElementById('sharedNoteOverlay');
+                const noteTitle = document.getElementById('sharedNoteTitle');
+                const noteBody = document.getElementById('sharedNoteBody');
+
+                function showNote(title, body) {
+                    noteTitle.textContent = title;
+                    noteBody.innerHTML = marked.parse(body);
+                    noteOverlay.classList.add('open');
+                }
+
+                noteOverlay.addEventListener('click', e => {
+                    if (e.target === noteOverlay) {
+                        noteOverlay.classList.remove('open');
+                    }
+                });
+
+                // ── Pan & zoom (readonly) ──
                 let isPanning = false, panStart = { x: 0, y: 0 };
                 svg.addEventListener('mousedown', e => {
+                    if (e.target.closest('.node') || e.target.closest('.collapse-indicator')) return;
                     if (e.button !== 0) return;
                     isPanning = true;
                     panStart = { x: e.clientX - pan.x, y: e.clientY - pan.y };
@@ -140,6 +262,46 @@
                     pan.scale = Math.min(5, Math.max(0.05, pan.scale + delta));
                     viewport.setAttribute('transform', `translate(${pan.x},${pan.y}) scale(${pan.scale})`);
                 }, { passive: false });
+
+                // ── Touch support ──
+                let touchStart = null, lastTouchDist = 0;
+                svg.addEventListener('touchstart', e => {
+                    if (e.touches.length === 1) {
+                        const t = e.touches[0];
+                        // Don't start pan on nodes
+                        if (e.target.closest('.node') || e.target.closest('.collapse-indicator')) return;
+                        touchStart = { x: t.clientX - pan.x, y: t.clientY - pan.y };
+                    } else if (e.touches.length === 2) {
+                        touchStart = null;
+                        const dx = e.touches[0].clientX - e.touches[1].clientX;
+                        const dy = e.touches[0].clientY - e.touches[1].clientY;
+                        lastTouchDist = Math.sqrt(dx * dx + dy * dy);
+                    }
+                }, { passive: true });
+                svg.addEventListener('touchmove', e => {
+                    if (e.touches.length === 1 && touchStart) {
+                        e.preventDefault();
+                        const t = e.touches[0];
+                        pan.x = t.clientX - touchStart.x;
+                        pan.y = t.clientY - touchStart.y;
+                        viewport.setAttribute('transform', `translate(${pan.x},${pan.y}) scale(${pan.scale})`);
+                    } else if (e.touches.length === 2) {
+                        e.preventDefault();
+                        const dx = e.touches[0].clientX - e.touches[1].clientX;
+                        const dy = e.touches[0].clientY - e.touches[1].clientY;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (lastTouchDist > 0) {
+                            const ratio = dist / lastTouchDist;
+                            pan.scale = Math.min(5, Math.max(0.05, pan.scale * ratio));
+                            viewport.setAttribute('transform', `translate(${pan.x},${pan.y}) scale(${pan.scale})`);
+                        }
+                        lastTouchDist = dist;
+                    }
+                }, { passive: false });
+                svg.addEventListener('touchend', () => {
+                    touchStart = null;
+                    lastTouchDist = 0;
+                });
 
             } catch (err) {
                 console.error(err);

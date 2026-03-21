@@ -392,7 +392,7 @@ def list_users():
             'username': row['username'],
             'displayName': row['display_name'],
             'isAdmin': bool(row['is_admin']),
-            'hasApiKey': bool(row['api_key']),
+            'apiKey': row['api_key'],
             'createdAt': row['created_at'],
             'mapCount': map_count
         })

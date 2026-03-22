@@ -25,6 +25,12 @@ const FRAME_STROKE = {
     '#fce7f3': '#f9a8d4',
     '#ede9fe': '#c4b5fd',
     '#f3f4f6': '#d1d5db',
+    '#ffedd5': '#fdba74',
+    '#cffafe': '#67e8f9',
+    '#fee2e2': '#fca5a5',
+    '#d1fae5': '#6ee7b7',
+    '#e0e7ff': '#a5b4fc',
+    '#fef3c7': '#fcd34d',
 };
 
 const FRAME_TITLE_COLOR = {
@@ -34,6 +40,12 @@ const FRAME_TITLE_COLOR = {
     '#fce7f3': '#9d174d',
     '#ede9fe': '#5b21b6',
     '#f3f4f6': '#374151',
+    '#ffedd5': '#9a3412',
+    '#cffafe': '#155e75',
+    '#fee2e2': '#991b1b',
+    '#d1fae5': '#065f46',
+    '#e0e7ff': '#3730a3',
+    '#fef3c7': '#92400e',
 };
 
 export function setSelectedFrameId(id) {

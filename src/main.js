@@ -134,12 +134,18 @@ let activeTagFilter = null; // tag ID for filtering
 let multiSelected = new Set();
 
 const FRAME_COLORS = [
-    { label: 'Bleu',   fill: '#dbeafe' },
-    { label: 'Vert',   fill: '#dcfce7' },
-    { label: 'Jaune',  fill: '#fef9c3' },
-    { label: 'Rose',   fill: '#fce7f3' },
-    { label: 'Violet', fill: '#ede9fe' },
-    { label: 'Gris',   fill: '#f3f4f6' },
+    { label: 'Bleu',     fill: '#dbeafe' },
+    { label: 'Vert',     fill: '#dcfce7' },
+    { label: 'Jaune',    fill: '#fef9c3' },
+    { label: 'Rose',     fill: '#fce7f3' },
+    { label: 'Violet',   fill: '#ede9fe' },
+    { label: 'Gris',     fill: '#f3f4f6' },
+    { label: 'Orange',   fill: '#ffedd5' },
+    { label: 'Cyan',     fill: '#cffafe' },
+    { label: 'Rouge',    fill: '#fee2e2' },
+    { label: 'Menthe',   fill: '#d1fae5' },
+    { label: 'Indigo',   fill: '#e0e7ff' },
+    { label: 'Ambre',    fill: '#fef3c7' },
 ];
 let selectedFrameId = null;
 

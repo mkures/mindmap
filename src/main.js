@@ -134,6 +134,7 @@ let activeTagFilter = null; // tag ID for filtering
 let multiSelected = new Set();
 
 const FRAME_COLORS = [
+    // Pastels légers
     { label: 'Bleu',     fill: '#dbeafe' },
     { label: 'Vert',     fill: '#dcfce7' },
     { label: 'Jaune',    fill: '#fef9c3' },
@@ -146,6 +147,20 @@ const FRAME_COLORS = [
     { label: 'Menthe',   fill: '#d1fae5' },
     { label: 'Indigo',   fill: '#e0e7ff' },
     { label: 'Ambre',    fill: '#fef3c7' },
+    // Moyens saturés
+    { label: 'Bleu moyen',   fill: '#bfdbfe' },
+    { label: 'Vert moyen',   fill: '#bbf7d0' },
+    { label: 'Rose moyen',   fill: '#f9a8d4' },
+    { label: 'Violet moyen', fill: '#c4b5fd' },
+    { label: 'Orange moyen', fill: '#fdba74' },
+    { label: 'Cyan moyen',   fill: '#67e8f9' },
+    // Neutres & sombres
+    { label: 'Ardoise',      fill: '#e2e8f0' },
+    { label: 'Pierre',       fill: '#e7e5e4' },
+    { label: 'Sable',        fill: '#f5f0e8' },
+    { label: 'Blanc',        fill: '#ffffff' },
+    { label: 'Graphite',     fill: '#d1d5db' },
+    { label: 'Taupe',        fill: '#d6d3d1' },
 ];
 let selectedFrameId = null;
 

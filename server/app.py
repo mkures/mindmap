@@ -1286,22 +1286,41 @@ def static_files(path):
     return send_from_directory(app.static_folder, path)
 
 
-# ── Scheduled R2 Backup ──────────────────────────────────────
+# ── R2 Backup (serverless-compatible) ─────────────────────────
+# Instead of threading.Timer (killed by serverless scale-to-zero),
+# check on each request if a backup is due and run it in a thread.
 BACKUP_INTERVAL = int(os.environ.get('R2_BACKUP_INTERVAL', 6 * 3600))  # default 6h
+_last_backup_time = 0
+_backup_running = False
 
-def _scheduled_r2_backup():
-    """Run R2 backup in background, reschedule next run."""
-    r2_endpoint = os.environ.get('R2_ENDPOINT_URL')
-    if not r2_endpoint:
-        return  # R2 not configured, stop silently
+@app.before_request
+def _maybe_backup_r2():
+    """Piggyback R2 backup on incoming requests. Serverless-safe."""
+    global _last_backup_time, _backup_running
+    if _backup_running:
+        return
+    if not os.environ.get('R2_ENDPOINT_URL'):
+        return
+    now = time.time()
+    if now - _last_backup_time < BACKUP_INTERVAL:
+        return
+    _last_backup_time = now  # reserve slot immediately
+    _backup_running = True
+    t = threading.Thread(target=_run_r2_backup, daemon=True)
+    t.start()
 
+def _run_r2_backup():
+    """Execute R2 backup in background thread."""
+    global _backup_running
     try:
         import boto3
         from botocore.config import Config
     except ImportError:
-        print('[R2 BACKUP] boto3 not installed, skipping scheduled backup', flush=True)
+        print('[R2 BACKUP] boto3 not installed, skipping', flush=True)
+        _backup_running = False
         return
 
+    r2_endpoint = os.environ.get('R2_ENDPOINT_URL')
     r2_access_key = os.environ.get('R2_ACCESS_KEY_ID')
     r2_secret_key = os.environ.get('R2_SECRET_ACCESS_KEY')
     r2_bucket = os.environ.get('R2_BUCKET_NAME', 'mindmap-backups')
@@ -1309,6 +1328,7 @@ def _scheduled_r2_backup():
 
     if not r2_access_key or not r2_secret_key:
         print('[R2 BACKUP] Missing R2 credentials, skipping', flush=True)
+        _backup_running = False
         return
 
     try:
@@ -1344,8 +1364,7 @@ def _scheduled_r2_backup():
     except Exception as e:
         print(f'[R2 BACKUP] Error: {e}', flush=True)
     finally:
-        # Reschedule next backup
-        _schedule_next_backup()
+        _backup_running = False
 
 
 def _cleanup_old_backups(s3, bucket, prefix, retention_days):
@@ -1362,35 +1381,8 @@ def _cleanup_old_backups(s3, bucket, prefix, retention_days):
         print(f'[R2 BACKUP] Cleanup error: {e}', flush=True)
 
 
-def _schedule_next_backup():
-    t = threading.Timer(BACKUP_INTERVAL, _scheduled_r2_backup)
-    t.daemon = True
-    t.start()
-
-
 # Initialize database on startup
 init_db()
-
-# Start scheduled R2 backup if configured
-# Use a flag to ensure only one scheduler runs (avoids duplicates with gunicorn workers)
-_backup_scheduler_started = False
-
-def start_backup_scheduler():
-    global _backup_scheduler_started
-    if _backup_scheduler_started:
-        return
-    if not os.environ.get('R2_ENDPOINT_URL'):
-        return
-    _backup_scheduler_started = True
-    print(f'[R2 BACKUP] Scheduled every {BACKUP_INTERVAL // 3600}h', flush=True)
-    # Run first backup after 60s delay to let the app fully start
-    t = threading.Timer(60, _scheduled_r2_backup)
-    t.daemon = True
-    t.start()
-
-# For direct python run (not gunicorn), start immediately
-if os.environ.get('R2_ENDPOINT_URL'):
-    start_backup_scheduler()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

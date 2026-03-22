@@ -1372,9 +1372,25 @@ def _schedule_next_backup():
 init_db()
 
 # Start scheduled R2 backup if configured
-if os.environ.get('R2_ENDPOINT_URL'):
+# Use a flag to ensure only one scheduler runs (avoids duplicates with gunicorn workers)
+_backup_scheduler_started = False
+
+def start_backup_scheduler():
+    global _backup_scheduler_started
+    if _backup_scheduler_started:
+        return
+    if not os.environ.get('R2_ENDPOINT_URL'):
+        return
+    _backup_scheduler_started = True
     print(f'[R2 BACKUP] Scheduled every {BACKUP_INTERVAL // 3600}h', flush=True)
-    _schedule_next_backup()
+    # Run first backup after 60s delay to let the app fully start
+    t = threading.Timer(60, _scheduled_r2_backup)
+    t.daemon = True
+    t.start()
+
+# For direct python run (not gunicorn), start immediately
+if os.environ.get('R2_ENDPOINT_URL'):
+    start_backup_scheduler()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

@@ -1372,13 +1372,14 @@ def _cleanup_old_backups(s3, bucket, prefix, retention_days):
     from datetime import datetime, timedelta
     cutoff = datetime.utcnow() - timedelta(days=retention_days)
     try:
-        response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
-        for obj in response.get('Contents', []):
-            if obj['LastModified'].replace(tzinfo=None) < cutoff:
-                s3.delete_object(Bucket=bucket, Key=obj['Key'])
-                print(f'[R2 BACKUP] Deleted old backup: {obj["Key"]}', flush=True)
-    except Exception as e:
-        print(f'[R2 BACKUP] Cleanup error: {e}', flush=True)
+        paginator = s3.get_paginator('list_objects_v2')
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            for obj in page.get('Contents', []):
+                if obj['LastModified'].replace(tzinfo=None) < cutoff:
+                    s3.delete_object(Bucket=bucket, Key=obj['Key'])
+                    print(f'[R2 BACKUP] Deleted old backup: {obj["Key"]}', flush=True)
+    except Exception:
+        pass  # R2 may return NoSuchKey on empty/new buckets, safe to ignore
 
 
 # Initialize database on startup

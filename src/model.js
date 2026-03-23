@@ -75,7 +75,7 @@ export function addChild(map, parentId) {
     if (!map.nodes[parentId]) return null;
     ensureSettings(map);
     const id = generateNodeId(map);
-    map.nodes[id] = { id, parentId, text: 'Node', children: [], color: map.nodes[parentId] ? map.nodes[parentId].color : map.settings.levelColors[0] };
+    map.nodes[id] = { id, parentId, text: 'Node', children: [] };
     map.nodes[parentId].children.push(id);
     map.updatedAt = Date.now();
     return id;

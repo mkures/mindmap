@@ -62,11 +62,11 @@ describe('addChild', () => {
     expect(map.updatedAt).toBeGreaterThanOrEqual(before);
   });
 
-  it('hérite la couleur du parent', () => {
+  it('ne définit pas de couleur à la création (laisse layout gérer par niveau)', () => {
     const map = createEmptyMap();
     map.nodes['n1'].color = '#ff0000';
     const childId = addChild(map, 'n1');
-    expect(map.nodes[childId].color).toBe('#ff0000');
+    expect(map.nodes[childId].color).toBeUndefined();
   });
 });
 

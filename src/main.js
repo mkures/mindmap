@@ -2632,6 +2632,7 @@ function showNodeContextMenu(x, y, nodeId) {
             menu.remove();
             pushUndo();
             map.nodes[nodeId].color = color;
+            map.nodes[nodeId].customColor = true;
             update();
             markMapChanged();
         });

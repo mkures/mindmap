@@ -114,7 +114,7 @@ export function layout(map) {
         node.depth = depth;
         node.direction = direction; // 'right' or 'left'
         const colorIndex = Math.min(depth, colors.length - 1);
-        if (!node.color) {
+        if (!node.color || !node.customColor) {
             node.color = colors[colorIndex] || colors[colors.length - 1] || '#ffffff';
         }
 
@@ -158,7 +158,9 @@ export function layout(map) {
         root.x = 0;
         root.y = -root.h / 2;
         const colorIndex = 0;
-        root.color = colors[colorIndex] || '#ffffff';
+        if (!root.customColor) {
+            root.color = colors[colorIndex] || '#ffffff';
+        }
         placed.add(map.rootId);
 
         if (!root.collapsed) {
@@ -279,7 +281,7 @@ export function layout(map) {
             node.depth = depth;
             node.direction = 'right';
             const colorIndex = Math.min(depth, colors.length - 1);
-            if (!node.color) {
+            if (!node.color || !node.customColor) {
                 node.color = colors[colorIndex] || colors[colors.length - 1] || '#ffffff';
             }
             if (depth === 0) {

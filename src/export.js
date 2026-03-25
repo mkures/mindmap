@@ -24,6 +24,25 @@ export function exportMarkdown(map) {
             lines.push(`${indent}- ${text}`);
         }
 
+        // Include note body if present
+        if (node.body) {
+            const noteIndent = depth <= 1 ? '' : '  '.repeat(depth - 2);
+            const bodyLines = node.body.split('\n');
+            lines.push('');
+            bodyLines.forEach(line => {
+                lines.push(`${noteIndent}> ${line}`);
+            });
+            lines.push('');
+        }
+
+        // Include tasks if present
+        if (node.tasks && node.tasks.length > 0) {
+            const taskIndent = depth <= 1 ? '' : '  '.repeat(depth - 2);
+            node.tasks.forEach(t => {
+                lines.push(`${taskIndent}- [${t.done ? 'x' : ' '}] ${t.text}`);
+            });
+        }
+
         if (node.children && node.children.length > 0) {
             node.children.forEach(childId => walk(childId, depth + 1));
         }
@@ -252,7 +271,7 @@ export function exportPdf(svgElement, map, pan) {
 
         // Simple PDF generation (without jsPDF dependency)
         // We'll use a data URL approach with an embedded image
-        generateSimplePdf(imgData, pageWidth, pageHeight, offsetX, offsetY, pdfWidth, pdfHeight, isLandscape);
+        generateSimplePdf(imgData, pageWidth, pageHeight, offsetX, offsetY, pdfWidth, pdfHeight, map);
         // PDF is handled via print dialog, no blob download needed
     };
     img.src = url;
@@ -262,7 +281,7 @@ export function exportPdf(svgElement, map, pan) {
  * Generate a simple PDF with embedded image
  * This is a minimal PDF generator without external dependencies
  */
-function generateSimplePdf(imgDataUrl, pageWidth, pageHeight, x, y, imgWidth, imgHeight, isLandscape) {
+function generateSimplePdf(imgDataUrl, pageWidth, pageHeight, x, y, imgWidth, imgHeight, map) {
     // Extract base64 data from data URL
     const base64Data = imgDataUrl.split(',')[1];
     const imgBytes = atob(base64Data);
@@ -316,21 +335,87 @@ function generateSimplePdf(imgDataUrl, pageWidth, pageHeight, x, y, imgWidth, im
     // Return an SVG wrapped in HTML that can be printed to PDF
     // Let's switch to using window.print() approach
 
-    return createPrintablePdf(imgDataUrl, pageWidth, pageHeight, x, y, imgWidth, imgHeight);
+    return createPrintablePdf(imgDataUrl, pageWidth, pageHeight, x, y, imgWidth, imgHeight, map);
 }
 
 /**
  * Create a printable HTML page that opens in a new window for PDF printing
  */
-function createPrintablePdf(imgDataUrl, pageWidth, pageHeight, x, y, imgWidth, imgHeight) {
+function createPrintablePdf(imgDataUrl, pageWidth, pageHeight, x, y, imgWidth, imgHeight, map) {
+    // Build notes appendix from all nodes with body or tasks
+    let notesHtml = '';
+    if (map) {
+        const entries = [];
+        function collectNotes(nodeId, depth) {
+            const node = map.nodes[nodeId];
+            if (!node) return;
+            const text = (node.text || '').trim() || '(vide)';
+            const hasBody = node.body && node.body.trim();
+            const hasTasks = node.tasks && node.tasks.length > 0;
+            if (hasBody || hasTasks) {
+                let content = '';
+                if (hasBody) {
+                    // Render markdown as simple HTML
+                    const bodyEscaped = node.body
+                        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                        .replace(/\n/g, '<br>');
+                    content += `<div class="note-body">${bodyEscaped}</div>`;
+                }
+                if (hasTasks) {
+                    content += '<ul class="note-tasks">';
+                    node.tasks.forEach(t => {
+                        content += `<li>${t.done ? '&#9745;' : '&#9744;'} ${t.text.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</li>`;
+                    });
+                    content += '</ul>';
+                }
+                entries.push(`<div class="note-entry"><h3>${'&nbsp;'.repeat(depth * 2)}${text}</h3>${content}</div>`);
+            }
+            if (node.children) node.children.forEach(cid => collectNotes(cid, depth + 1));
+        }
+        collectNotes(map.rootId, 0);
+        // Free nodes
+        Object.values(map.nodes).forEach(n => {
+            if (n.placement === 'free' && n.fx != null) {
+                const text = (n.text || '').trim() || '(vide)';
+                const hasBody = n.body && n.body.trim();
+                const hasTasks = n.tasks && n.tasks.length > 0;
+                if (hasBody || hasTasks) {
+                    let content = '';
+                    if (hasBody) {
+                        const bodyEscaped = n.body.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+                        content += `<div class="note-body">${bodyEscaped}</div>`;
+                    }
+                    if (hasTasks) {
+                        content += '<ul class="note-tasks">';
+                        n.tasks.forEach(t => {
+                            content += `<li>${t.done ? '&#9745;' : '&#9744;'} ${t.text.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</li>`;
+                        });
+                        content += '</ul>';
+                    }
+                    entries.push(`<div class="note-entry"><h3>${text}</h3>${content}</div>`);
+                }
+            }
+        });
+        if (entries.length > 0) {
+            notesHtml = `<div class="notes-page"><h2>Notes & Tâches</h2>${entries.join('')}</div>`;
+        }
+    }
+
     const html = `<!DOCTYPE html>
 <html>
 <head>
     <title>MindMap Export</title>
     <style>
-        @page { size: ${pageWidth}mm ${pageHeight}mm; margin: 0; }
-        body { margin: 0; padding: 0; }
+        @page { size: ${pageWidth}mm ${pageHeight}mm; margin: 10mm; }
+        body { margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; font-size: 11px; color: #333; }
         img { display: block; margin: ${y}mm auto; width: ${imgWidth}mm; height: ${imgHeight}mm; }
+        .notes-page { page-break-before: always; padding: 10mm; }
+        .notes-page h2 { font-size: 16px; border-bottom: 1px solid #ccc; padding-bottom: 6px; margin-bottom: 12px; }
+        .note-entry { margin-bottom: 10px; }
+        .note-entry h3 { font-size: 12px; margin: 0 0 4px; color: #555; }
+        .note-body { margin-left: 12px; white-space: pre-wrap; line-height: 1.5; }
+        .note-tasks { margin: 4px 0 0 12px; padding: 0; list-style: none; }
+        .note-tasks li { margin: 2px 0; }
         @media print {
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         }
@@ -338,6 +423,7 @@ function createPrintablePdf(imgDataUrl, pageWidth, pageHeight, x, y, imgWidth, i
 </head>
 <body>
     <img src="${imgDataUrl}" />
+    ${notesHtml}
     <script>window.onload = () => { window.print(); }</script>
 </body>
 </html>`;

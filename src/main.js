@@ -655,8 +655,49 @@ function wireUI() {
         }
     });
 
-    // ── Node hover state (event delegation) ──
+    // ── Node hover state (event delegation) + note tooltip ──
     let hoveredEl = null;
+    let noteTooltip = null;
+    let noteTooltipTimer = null;
+
+    function showNoteTooltip(nodeEl) {
+        if (!map) return;
+        const nodeId = nodeEl.dataset.id;
+        const node = map.nodes[nodeId];
+        if (!node || !node.body) return;
+
+        hideNoteTooltip();
+        noteTooltip = document.createElement('div');
+        noteTooltip.className = 'note-tooltip';
+        const preview = node.body.length > 300 ? node.body.slice(0, 300) + '…' : node.body;
+        noteTooltip.innerHTML = typeof marked !== 'undefined' && marked.parse
+            ? marked.parse(preview)
+            : preview.replace(/\n/g, '<br>');
+        document.body.appendChild(noteTooltip);
+
+        // Position near the node
+        const rect = nodeEl.getBoundingClientRect();
+        noteTooltip.style.left = rect.left + 'px';
+        noteTooltip.style.top = (rect.bottom + 6) + 'px';
+
+        // Clamp to viewport
+        requestAnimationFrame(() => {
+            if (!noteTooltip) return;
+            const tr = noteTooltip.getBoundingClientRect();
+            if (tr.right > window.innerWidth - 10) {
+                noteTooltip.style.left = (window.innerWidth - tr.width - 10) + 'px';
+            }
+            if (tr.bottom > window.innerHeight - 10) {
+                noteTooltip.style.top = (rect.top - tr.height - 6) + 'px';
+            }
+        });
+    }
+
+    function hideNoteTooltip() {
+        if (noteTooltipTimer) { clearTimeout(noteTooltipTimer); noteTooltipTimer = null; }
+        if (noteTooltip) { noteTooltip.remove(); noteTooltip = null; }
+    }
+
     svgElement.addEventListener('mouseover', e => {
         if (dragState) return;
         const nodeEl = e.target.closest('.node');
@@ -664,6 +705,8 @@ function wireUI() {
             if (hoveredEl) hoveredEl.classList.remove('hovered');
             nodeEl.classList.add('hovered');
             hoveredEl = nodeEl;
+            hideNoteTooltip();
+            noteTooltipTimer = setTimeout(() => showNoteTooltip(nodeEl), 400);
         }
     });
     svgElement.addEventListener('mouseout', e => {
@@ -671,6 +714,7 @@ function wireUI() {
         if (nodeEl && nodeEl === hoveredEl) {
             nodeEl.classList.remove('hovered');
             hoveredEl = null;
+            hideNoteTooltip();
         }
     });
 

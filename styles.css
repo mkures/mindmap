@@ -1517,6 +1517,34 @@ body.dragging-node {
     filter: drop-shadow(0 2px 6px rgba(212,135,63,0.15));
 }
 
+/* ── Note hover tooltip ──────────────────────────────────────────────────── */
+.note-tooltip {
+    position: fixed;
+    z-index: 10000;
+    max-width: 320px;
+    max-height: 200px;
+    overflow: hidden;
+    background: var(--surface-raised, #fff);
+    border: 1px solid var(--border, #ddd);
+    border-radius: var(--radius-sm, 6px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    padding: 10px 14px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-secondary, #555);
+    pointer-events: none;
+    animation: tooltipIn 0.15s ease;
+}
+.note-tooltip p { margin: 0 0 6px; }
+.note-tooltip h1, .note-tooltip h2, .note-tooltip h3 { font-size: 13px; margin: 0 0 4px; color: var(--text, #333); }
+.note-tooltip ul, .note-tooltip ol { padding-left: 16px; margin: 4px 0; }
+.note-tooltip code { background: var(--surface-hover, #f0f0f0); padding: 1px 3px; border-radius: 3px; font-size: 11px; }
+@keyframes tooltipIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
 /* ── Save confirmation pulse ─────────────────────────────────────────────── */
 @keyframes saveConfirm {
     0%   { color: #16a34a; }

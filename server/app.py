@@ -22,10 +22,13 @@ DB_PATH = os.environ.get('DB_PATH', 'mindmap.db')
 ADMIN_USERNAME = os.environ.get('BASIC_AUTH_USERNAME', 'admin')
 ADMIN_PASSWORD = os.environ.get('BASIC_AUTH_PASSWORD', 'changeme')
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
+if not os.environ.get('SECRET_KEY'):
+    print("[WARNING] SECRET_KEY not set — sessions will be invalidated on restart. Set SECRET_KEY env var for production.", flush=True)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
 app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') == 'production' or os.environ.get('RAILWAY_ENVIRONMENT') is not None
 
 print(f"[CONFIG] DB_PATH={DB_PATH}", flush=True)
 print(f"[CONFIG] PROJECT_ROOT={PROJECT_ROOT}", flush=True)
@@ -42,6 +45,7 @@ def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
     return conn
 
 
@@ -320,17 +324,16 @@ def admin_page():
 @requires_admin
 def backup_db():
     """Download the SQLite database file."""
-    import shutil
     import tempfile
     db_path = os.path.abspath(DB_PATH)
     # Copy to temp file to avoid locking issues
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
     tmp.close()
-    conn = get_db()
-    conn.execute('BEGIN IMMEDIATE')
-    shutil.copy2(db_path, tmp.name)
-    conn.rollback()
-    conn.close()
+    src_conn = sqlite3.connect(db_path)
+    dst_conn = sqlite3.connect(tmp.name)
+    src_conn.backup(dst_conn)
+    src_conn.close()
+    dst_conn.close()
     from flask import send_file
     timestamp = time.strftime('%Y%m%d-%H%M%S')
     tmp_path = tmp.name
@@ -404,7 +407,7 @@ def backup_to_r2():
         return jsonify({'success': True, 'key': key, 'bucket': r2_bucket})
     except Exception as e:
         print(f'[R2 BACKUP] Error: {e}', flush=True)
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Erreur lors de la sauvegarde R2'}), 500
 
 
 @app.route('/api/admin/users', methods=['GET'])
@@ -445,8 +448,8 @@ def create_user():
     if not username or not password:
         return jsonify({'error': 'Nom d\'utilisateur et mot de passe requis'}), 400
 
-    if len(password) < 4:
-        return jsonify({'error': 'Le mot de passe doit faire au moins 4 caractères'}), 400
+    if len(password) < 8:
+        return jsonify({'error': 'Le mot de passe doit faire au moins 8 caractères'}), 400
 
     conn = get_db()
     existing = conn.execute('SELECT id FROM users WHERE username = ?', (username,)).fetchone()
@@ -497,9 +500,9 @@ def update_user(user_id):
 
     password = data.get('password')
     if password:
-        if len(password) < 4:
+        if len(password) < 8:
             conn.close()
-            return jsonify({'error': 'Le mot de passe doit faire au moins 4 caractères'}), 400
+            return jsonify({'error': 'Le mot de passe doit faire au moins 8 caractères'}), 400
         updates.append('password_hash = ?')
         params.append(generate_password_hash(password))
 
@@ -558,7 +561,8 @@ def delete_user(user_id):
         conn.close()
         return jsonify({'error': 'Impossible de supprimer un administrateur'}), 400
 
-    # Delete user's maps and folders
+    # Delete user's maps, their versions, and folders
+    conn.execute('DELETE FROM map_versions WHERE map_id IN (SELECT id FROM maps WHERE user_id = ?)', (user_id,))
     conn.execute('DELETE FROM maps WHERE user_id = ?', (user_id,))
     conn.execute('DELETE FROM folders WHERE user_id = ?', (user_id,))
     conn.execute('DELETE FROM users WHERE id = ?', (user_id,))
@@ -579,57 +583,57 @@ def get_maps():
     map_id = request.args.get('id')
     print(f"[API] GET /api/maps?id={map_id} user={user['username']}", flush=True)
     conn = get_db()
-
-    if map_id == '0' or map_id is None:
-        folder_id = request.args.get('folder_id')
-        trashed = request.args.get('trashed')
-        if trashed == '1':
-            cursor = conn.execute(
-                'SELECT id, title, updated_at, folder_id FROM maps WHERE user_id = ? AND trashed = 1 ORDER BY updated_at DESC',
-                (user['id'],)
-            )
-        elif folder_id == 'root':
-            cursor = conn.execute(
-                'SELECT id, title, updated_at, folder_id FROM maps WHERE user_id = ? AND folder_id IS NULL AND (trashed IS NULL OR trashed = 0) ORDER BY updated_at DESC',
-                (user['id'],)
-            )
-        elif folder_id:
-            cursor = conn.execute(
-                'SELECT id, title, updated_at, folder_id FROM maps WHERE user_id = ? AND folder_id = ? AND (trashed IS NULL OR trashed = 0) ORDER BY updated_at DESC',
-                (user['id'], folder_id)
-            )
+    try:
+        if map_id == '0' or map_id is None:
+            folder_id = request.args.get('folder_id')
+            trashed = request.args.get('trashed')
+            if trashed == '1':
+                cursor = conn.execute(
+                    'SELECT id, title, updated_at, folder_id FROM maps WHERE user_id = ? AND trashed = 1 ORDER BY updated_at DESC',
+                    (user['id'],)
+                )
+            elif folder_id == 'root':
+                cursor = conn.execute(
+                    'SELECT id, title, updated_at, folder_id FROM maps WHERE user_id = ? AND folder_id IS NULL AND (trashed IS NULL OR trashed = 0) ORDER BY updated_at DESC',
+                    (user['id'],)
+                )
+            elif folder_id:
+                cursor = conn.execute(
+                    'SELECT id, title, updated_at, folder_id FROM maps WHERE user_id = ? AND folder_id = ? AND (trashed IS NULL OR trashed = 0) ORDER BY updated_at DESC',
+                    (user['id'], folder_id)
+                )
+            else:
+                cursor = conn.execute(
+                    'SELECT id, title, updated_at, folder_id FROM maps WHERE user_id = ? AND (trashed IS NULL OR trashed = 0) ORDER BY updated_at DESC',
+                    (user['id'],)
+                )
+            maps = []
+            for row in cursor:
+                maps.append({
+                    'id': row['id'],
+                    'title': row['title'],
+                    'updatedAt': row['updated_at'],
+                    'folderId': row['folder_id']
+                })
+            return jsonify(maps)
         else:
             cursor = conn.execute(
-                'SELECT id, title, updated_at, folder_id FROM maps WHERE user_id = ? AND (trashed IS NULL OR trashed = 0) ORDER BY updated_at DESC',
-                (user['id'],)
+                'SELECT id, title, data, created_at, updated_at, user_id FROM maps WHERE id = ?',
+                (map_id,)
             )
-        maps = []
-        for row in cursor:
-            maps.append({
-                'id': row['id'],
-                'title': row['title'],
-                'updatedAt': row['updated_at'],
-                'folderId': row['folder_id']
-            })
+            row = cursor.fetchone()
+
+            if row is None:
+                return jsonify({'error': 'Map not found'}), 404
+
+            # Users can only access their own maps
+            if row['user_id'] != user['id'] and not user.get('is_admin'):
+                return jsonify({'error': 'Accès refusé'}), 403
+
+            map_data = _load_map_data(row['data'])
+            return jsonify({'map': map_data})
+    finally:
         conn.close()
-        return jsonify(maps)
-    else:
-        cursor = conn.execute(
-            'SELECT id, title, data, created_at, updated_at, user_id FROM maps WHERE id = ?',
-            (map_id,)
-        )
-        row = cursor.fetchone()
-        conn.close()
-
-        if row is None:
-            return jsonify({'error': 'Map not found'}), 404
-
-        # Users can only access their own maps
-        if row['user_id'] != user['id'] and not user.get('is_admin'):
-            return jsonify({'error': 'Accès refusé'}), 403
-
-        map_data = json.loads(row['data'])
-        return jsonify({'map': map_data})
 
 
 @app.route('/api/maps', methods=['POST'])
@@ -648,51 +652,51 @@ def save_map():
     now = int(time.time() * 1000)
 
     conn = get_db()
+    try:
+        if map_id:
+            cursor = conn.execute('SELECT id, user_id FROM maps WHERE id = ?', (map_id,))
+            existing = cursor.fetchone()
 
-    if map_id:
-        cursor = conn.execute('SELECT id, user_id FROM maps WHERE id = ?', (map_id,))
-        existing = cursor.fetchone()
-
-        if existing:
-            # Only allow updating own maps
-            if existing['user_id'] != user['id'] and not user.get('is_admin'):
-                conn.close()
-                return jsonify({'error': 'Accès refusé'}), 403
-            conn.execute(
-                'UPDATE maps SET title = ?, data = ?, updated_at = ? WHERE id = ?',
-                (title, json.dumps(map_content), now, map_id)
-            )
+            if existing:
+                # Only allow updating own maps
+                if existing['user_id'] != user['id'] and not user.get('is_admin'):
+                    return jsonify({'error': 'Accès refusé'}), 403
+                conn.execute(
+                    'UPDATE maps SET title = ?, data = ?, updated_at = ? WHERE id = ?',
+                    (title, json.dumps(map_content), now, map_id)
+                )
+            else:
+                conn.execute(
+                    'INSERT INTO maps (id, title, data, created_at, updated_at, user_id) VALUES (?, ?, ?, ?, ?, ?)',
+                    (map_id, title, json.dumps(map_content), now, now, user['id'])
+                )
         else:
+            map_id = f'map-{uuid.uuid4().hex[:12]}'
             conn.execute(
                 'INSERT INTO maps (id, title, data, created_at, updated_at, user_id) VALUES (?, ?, ?, ?, ?, ?)',
                 (map_id, title, json.dumps(map_content), now, now, user['id'])
             )
-    else:
-        map_id = f'map-{uuid.uuid4().hex[:12]}'
+
+        # Save version snapshot (keep last 30 per map)
         conn.execute(
-            'INSERT INTO maps (id, title, data, created_at, updated_at, user_id) VALUES (?, ?, ?, ?, ?, ?)',
-            (map_id, title, json.dumps(map_content), now, now, user['id'])
+            'INSERT INTO map_versions (map_id, data, created_at) VALUES (?, ?, ?)',
+            (map_id, json.dumps(map_content), now)
         )
+        conn.execute('''
+            DELETE FROM map_versions WHERE map_id = ? AND id NOT IN (
+                SELECT id FROM map_versions WHERE map_id = ? ORDER BY created_at DESC LIMIT 30
+            )
+        ''', (map_id, map_id))
 
-    # Save version snapshot (keep last 30 per map)
-    conn.execute(
-        'INSERT INTO map_versions (map_id, data, created_at) VALUES (?, ?, ?)',
-        (map_id, json.dumps(map_content), now)
-    )
-    conn.execute('''
-        DELETE FROM map_versions WHERE map_id = ? AND id NOT IN (
-            SELECT id FROM map_versions WHERE map_id = ? ORDER BY created_at DESC LIMIT 30
-        )
-    ''', (map_id, map_id))
+        conn.commit()
 
-    conn.commit()
-    conn.close()
-
-    return jsonify({
-        'id': map_id,
-        'title': title,
-        'updatedAt': now
-    })
+        return jsonify({
+            'id': map_id,
+            'title': title,
+            'updatedAt': now
+        })
+    finally:
+        conn.close()
 
 
 @app.route('/api/maps/<map_id>/versions', methods=['GET'])
@@ -701,20 +705,20 @@ def list_versions(map_id):
     """List version history for a map."""
     user = request.current_user
     conn = get_db()
-    map_row = conn.execute('SELECT user_id FROM maps WHERE id = ?', (map_id,)).fetchone()
-    if not map_row:
+    try:
+        map_row = conn.execute('SELECT user_id FROM maps WHERE id = ?', (map_id,)).fetchone()
+        if not map_row:
+            return jsonify({'error': 'Map introuvable'}), 404
+        if map_row['user_id'] != user['id'] and not user.get('is_admin'):
+            return jsonify({'error': 'Accès refusé'}), 403
+        cursor = conn.execute(
+            'SELECT id, created_at FROM map_versions WHERE map_id = ? ORDER BY created_at DESC',
+            (map_id,)
+        )
+        versions = [{'id': row['id'], 'createdAt': row['created_at']} for row in cursor]
+        return jsonify(versions)
+    finally:
         conn.close()
-        return jsonify({'error': 'Map introuvable'}), 404
-    if map_row['user_id'] != user['id'] and not user.get('is_admin'):
-        conn.close()
-        return jsonify({'error': 'Accès refusé'}), 403
-    cursor = conn.execute(
-        'SELECT id, created_at FROM map_versions WHERE map_id = ? ORDER BY created_at DESC',
-        (map_id,)
-    )
-    versions = [{'id': row['id'], 'createdAt': row['created_at']} for row in cursor]
-    conn.close()
-    return jsonify(versions)
 
 
 @app.route('/api/maps/<map_id>/versions/<int:version_id>', methods=['GET'])
@@ -723,21 +727,21 @@ def get_version(map_id, version_id):
     """Get a specific version of a map."""
     user = request.current_user
     conn = get_db()
-    map_row = conn.execute('SELECT user_id FROM maps WHERE id = ?', (map_id,)).fetchone()
-    if not map_row:
+    try:
+        map_row = conn.execute('SELECT user_id FROM maps WHERE id = ?', (map_id,)).fetchone()
+        if not map_row:
+            return jsonify({'error': 'Map introuvable'}), 404
+        if map_row['user_id'] != user['id'] and not user.get('is_admin'):
+            return jsonify({'error': 'Accès refusé'}), 403
+        version = conn.execute(
+            'SELECT data, created_at FROM map_versions WHERE id = ? AND map_id = ?',
+            (version_id, map_id)
+        ).fetchone()
+        if not version:
+            return jsonify({'error': 'Version introuvable'}), 404
+        return jsonify({'map': _load_map_data(version['data']), 'createdAt': version['created_at']})
+    finally:
         conn.close()
-        return jsonify({'error': 'Map introuvable'}), 404
-    if map_row['user_id'] != user['id'] and not user.get('is_admin'):
-        conn.close()
-        return jsonify({'error': 'Accès refusé'}), 403
-    version = conn.execute(
-        'SELECT data, created_at FROM map_versions WHERE id = ? AND map_id = ?',
-        (version_id, map_id)
-    ).fetchone()
-    conn.close()
-    if not version:
-        return jsonify({'error': 'Version introuvable'}), 404
-    return jsonify({'map': json.loads(version['data']), 'createdAt': version['created_at']})
 
 
 @app.route('/api/maps/<map_id>', methods=['DELETE'])
@@ -746,15 +750,16 @@ def delete_map(map_id):
     """Permanently delete a map."""
     user = request.current_user
     conn = get_db()
-    row = conn.execute('SELECT user_id FROM maps WHERE id = ?', (map_id,)).fetchone()
-    if row and row['user_id'] != user['id'] and not user.get('is_admin'):
+    try:
+        row = conn.execute('SELECT user_id FROM maps WHERE id = ?', (map_id,)).fetchone()
+        if row and row['user_id'] != user['id'] and not user.get('is_admin'):
+            return jsonify({'error': 'Accès refusé'}), 403
+        conn.execute('DELETE FROM map_versions WHERE map_id = ?', (map_id,))
+        conn.execute('DELETE FROM maps WHERE id = ?', (map_id,))
+        conn.commit()
+        return jsonify({'success': True})
+    finally:
         conn.close()
-        return jsonify({'error': 'Accès refusé'}), 403
-    conn.execute('DELETE FROM map_versions WHERE map_id = ?', (map_id,))
-    conn.execute('DELETE FROM maps WHERE id = ?', (map_id,))
-    conn.commit()
-    conn.close()
-    return jsonify({'success': True})
 
 
 @app.route('/api/maps/<map_id>/trash', methods=['PUT'])
@@ -925,7 +930,7 @@ def get_shared_map(token):
     conn.close()
     if not row:
         return jsonify({'error': 'Carte introuvable ou partage désactivé'}), 404
-    map_data = json.loads(row['data'])
+    map_data = _load_map_data(row['data'])
     return jsonify({'map': map_data, 'title': row['title']})
 
 
@@ -972,13 +977,8 @@ def _load_map_data(raw_data):
     return data
 
 
-def _save_map_data(map_data, original_raw):
-    """Serialize map data for DB storage, preserving original encoding format."""
-    # Detect if original was double-encoded (string inside JSON)
-    decoded_once = json.loads(original_raw)
-    if isinstance(decoded_once, str):
-        # Was double-encoded: re-encode the same way
-        return json.dumps(json.dumps(map_data))
+def _save_map_data(map_data, original_raw=None):
+    """Serialize map data for DB storage. Always uses single encoding."""
     return json.dumps(map_data)
 
 
@@ -988,205 +988,205 @@ def inject_operations(map_id):
     """Batch operations on a map (for AI injection)."""
     user = request.current_user
     conn = get_db()
-    row = conn.execute('SELECT data, user_id FROM maps WHERE id = ?', (map_id,)).fetchone()
+    try:
+        row = conn.execute('SELECT data, user_id FROM maps WHERE id = ?', (map_id,)).fetchone()
 
-    if not row:
+        if not row:
+            return jsonify({'error': 'Map not found'}), 404
+
+        if row['user_id'] != user['id'] and not user.get('is_admin'):
+            return jsonify({'error': 'Accès refusé'}), 403
+
+        raw_data = row['data']
+        map_data = _load_map_data(raw_data)
+        operations = request.get_json().get('operations', [])
+
+        applied = 0
+        skipped = 0
+        errors = []
+        node_ids = {}
+
+        for i, op_data in enumerate(operations):
+            try:
+                op = op_data.get('op')
+
+                if op == 'add_child':
+                    parent_id = op_data['parent']
+                    if parent_id not in map_data.get('nodes', {}):
+                        raise ValueError(f"Parent '{parent_id}' not found")
+                    node_id = op_data.get('id') or _generate_node_id(map_data)
+                    if node_id in map_data['nodes']:
+                        skipped += 1
+                        continue
+                    map_data['nodes'][node_id] = {
+                        'id': node_id,
+                        'parentId': parent_id,
+                        'text': op_data.get('text', 'Node'),
+                        'children': [],
+                        'color': op_data.get('color'),
+                        'tags': op_data.get('tags', [])
+                    }
+                    map_data['nodes'][parent_id]['children'].append(node_id)
+                    node_ids[node_id] = node_id
+
+                elif op == 'add_sibling':
+                    ref_id = op_data['sibling_of']
+                    ref_node = map_data['nodes'].get(ref_id)
+                    if not ref_node or not ref_node.get('parentId'):
+                        raise ValueError(f"Node '{ref_id}' not found or is root")
+                    parent_id = ref_node['parentId']
+                    node_id = op_data.get('id') or _generate_node_id(map_data)
+                    if node_id in map_data['nodes']:
+                        skipped += 1
+                        continue
+                    map_data['nodes'][node_id] = {
+                        'id': node_id,
+                        'parentId': parent_id,
+                        'text': op_data.get('text', 'Node'),
+                        'children': [],
+                        'color': op_data.get('color'),
+                        'tags': op_data.get('tags', [])
+                    }
+                    siblings = map_data['nodes'][parent_id]['children']
+                    idx = siblings.index(ref_id) + 1 if ref_id in siblings else len(siblings)
+                    siblings.insert(idx, node_id)
+                    node_ids[node_id] = node_id
+
+                elif op == 'add_free_bubble':
+                    node_id = op_data.get('id') or _generate_node_id(map_data)
+                    if node_id in map_data.get('nodes', {}):
+                        skipped += 1
+                        continue
+                    map_data['nodes'][node_id] = {
+                        'id': node_id,
+                        'parentId': None,
+                        'text': op_data.get('text', 'Note'),
+                        'children': [],
+                        'nodeType': 'bubble',
+                        'placement': 'free',
+                        'fx': op_data.get('fx', 0),
+                        'fy': op_data.get('fy', 0),
+                        'color': op_data.get('color', '#fef3c7'),
+                        'tags': op_data.get('tags', [])
+                    }
+                    node_ids[node_id] = node_id
+
+                elif op == 'add_card':
+                    node_id = op_data.get('id') or _generate_node_id(map_data)
+                    if node_id in map_data.get('nodes', {}):
+                        skipped += 1
+                        continue
+                    map_data['nodes'][node_id] = {
+                        'id': node_id,
+                        'parentId': None,
+                        'text': op_data.get('text', 'Sans titre'),
+                        'children': [],
+                        'nodeType': 'card',
+                        'placement': 'free',
+                        'fx': op_data.get('fx', 0),
+                        'fy': op_data.get('fy', 0),
+                        'color': op_data.get('color', '#ffffff'),
+                        'body': op_data.get('body', ''),
+                        'cardWidth': op_data.get('cardWidth', 280),
+                        'cardExpanded': bool(op_data.get('cardExpanded', False)),
+                        'tags': op_data.get('tags', [])
+                    }
+                    node_ids[node_id] = node_id
+
+                elif op == 'add_link':
+                    if 'links' not in map_data:
+                        map_data['links'] = []
+                    from_id = op_data['from']
+                    to_id = op_data['to']
+                    if any(l['from'] == from_id and l['to'] == to_id for l in map_data['links']):
+                        skipped += 1
+                        continue
+                    link_id = f'l{int(time.time() * 1000)}{i}'
+                    map_data['links'].append({
+                        'id': link_id,
+                        'from': from_id,
+                        'to': to_id,
+                        'label': op_data.get('label', ''),
+                        'color': op_data.get('color', '#94a3b8'),
+                        'style': op_data.get('style', 'dashed')
+                    })
+
+                elif op == 'add_frame':
+                    if 'frames' not in map_data:
+                        map_data['frames'] = []
+                    frame_id = op_data.get('id') or f'f{int(time.time() * 1000)}'
+                    if any(f['id'] == frame_id for f in map_data['frames']):
+                        skipped += 1
+                        continue
+                    map_data['frames'].append({
+                        'id': frame_id,
+                        'title': op_data.get('title', 'Zone'),
+                        'color': op_data.get('color', '#dbeafe'),
+                        'x': op_data.get('x', 0),
+                        'y': op_data.get('y', 0),
+                        'w': op_data.get('w', 400),
+                        'h': op_data.get('h', 300)
+                    })
+
+                elif op == 'add_tag':
+                    map_data.setdefault('settings', {}).setdefault('tags', [])
+                    tag_id = op_data['id']
+                    if any(t['id'] == tag_id for t in map_data['settings']['tags']):
+                        skipped += 1
+                        continue
+                    map_data['settings']['tags'].append({
+                        'id': tag_id,
+                        'name': op_data.get('label', ''),
+                        'color': op_data.get('color', '#94a3b8')
+                    })
+
+                elif op == 'update_node':
+                    node_id = op_data['id']
+                    node = map_data['nodes'].get(node_id)
+                    if not node:
+                        raise ValueError(f"Node '{node_id}' not found")
+                    for key in ('text', 'body', 'tags', 'color'):
+                        if key in op_data:
+                            node[key] = op_data[key]
+
+                elif op == 'delete_node':
+                    node_id = op_data['id']
+                    if node_id not in map_data.get('nodes', {}) or node_id == map_data.get('rootId'):
+                        skipped += 1
+                        continue
+                    _delete_node_recursive(map_data, node_id)
+                    if 'links' in map_data:
+                        map_data['links'] = [l for l in map_data['links']
+                                             if l['from'] != node_id and l['to'] != node_id]
+
+                else:
+                    raise ValueError(f"Unknown operation '{op}'")
+
+                applied += 1
+
+            except Exception as e:
+                skipped += 1
+                errors.append({'index': i, 'op': op_data.get('op'), 'error': 'Erreur interne'})
+
+        # Save
+        map_data['updatedAt'] = int(time.time() * 1000)
+        serialized = _save_map_data(map_data, raw_data)
+        conn.execute('UPDATE maps SET data = ?, updated_at = ? WHERE id = ?',
+                     (serialized, map_data['updatedAt'], map_id))
+        conn.commit()
+
+        result = {
+            'ok': True,
+            'map_id': map_id,
+            'operations_applied': applied,
+            'operations_skipped': skipped,
+            'node_ids': node_ids
+        }
+        if errors:
+            result['errors'] = errors
+        return jsonify(result)
+    finally:
         conn.close()
-        return jsonify({'error': 'Map not found'}), 404
-
-    if row['user_id'] != user['id'] and not user.get('is_admin'):
-        conn.close()
-        return jsonify({'error': 'Accès refusé'}), 403
-
-    raw_data = row['data']
-    map_data = _load_map_data(raw_data)
-    operations = request.get_json().get('operations', [])
-
-    applied = 0
-    skipped = 0
-    errors = []
-    node_ids = {}
-
-    for i, op_data in enumerate(operations):
-        try:
-            op = op_data.get('op')
-
-            if op == 'add_child':
-                parent_id = op_data['parent']
-                if parent_id not in map_data.get('nodes', {}):
-                    raise ValueError(f"Parent '{parent_id}' not found")
-                node_id = op_data.get('id') or _generate_node_id(map_data)
-                if node_id in map_data['nodes']:
-                    skipped += 1
-                    continue
-                map_data['nodes'][node_id] = {
-                    'id': node_id,
-                    'parentId': parent_id,
-                    'text': op_data.get('text', 'Node'),
-                    'children': [],
-                    'color': op_data.get('color'),
-                    'tags': op_data.get('tags', [])
-                }
-                map_data['nodes'][parent_id]['children'].append(node_id)
-                node_ids[node_id] = node_id
-
-            elif op == 'add_sibling':
-                ref_id = op_data['sibling_of']
-                ref_node = map_data['nodes'].get(ref_id)
-                if not ref_node or not ref_node.get('parentId'):
-                    raise ValueError(f"Node '{ref_id}' not found or is root")
-                parent_id = ref_node['parentId']
-                node_id = op_data.get('id') or _generate_node_id(map_data)
-                if node_id in map_data['nodes']:
-                    skipped += 1
-                    continue
-                map_data['nodes'][node_id] = {
-                    'id': node_id,
-                    'parentId': parent_id,
-                    'text': op_data.get('text', 'Node'),
-                    'children': [],
-                    'color': op_data.get('color'),
-                    'tags': op_data.get('tags', [])
-                }
-                siblings = map_data['nodes'][parent_id]['children']
-                idx = siblings.index(ref_id) + 1 if ref_id in siblings else len(siblings)
-                siblings.insert(idx, node_id)
-                node_ids[node_id] = node_id
-
-            elif op == 'add_free_bubble':
-                node_id = op_data.get('id') or _generate_node_id(map_data)
-                if node_id in map_data.get('nodes', {}):
-                    skipped += 1
-                    continue
-                map_data['nodes'][node_id] = {
-                    'id': node_id,
-                    'parentId': None,
-                    'text': op_data.get('text', 'Note'),
-                    'children': [],
-                    'nodeType': 'bubble',
-                    'placement': 'free',
-                    'fx': op_data.get('fx', 0),
-                    'fy': op_data.get('fy', 0),
-                    'color': op_data.get('color', '#fef3c7'),
-                    'tags': op_data.get('tags', [])
-                }
-                node_ids[node_id] = node_id
-
-            elif op == 'add_card':
-                node_id = op_data.get('id') or _generate_node_id(map_data)
-                if node_id in map_data.get('nodes', {}):
-                    skipped += 1
-                    continue
-                map_data['nodes'][node_id] = {
-                    'id': node_id,
-                    'parentId': None,
-                    'text': op_data.get('text', 'Sans titre'),
-                    'children': [],
-                    'nodeType': 'card',
-                    'placement': 'free',
-                    'fx': op_data.get('fx', 0),
-                    'fy': op_data.get('fy', 0),
-                    'color': op_data.get('color', '#ffffff'),
-                    'body': op_data.get('body', ''),
-                    'cardWidth': op_data.get('cardWidth', 280),
-                    'cardExpanded': bool(op_data.get('cardExpanded', False)),
-                    'tags': op_data.get('tags', [])
-                }
-                node_ids[node_id] = node_id
-
-            elif op == 'add_link':
-                if 'links' not in map_data:
-                    map_data['links'] = []
-                from_id = op_data['from']
-                to_id = op_data['to']
-                if any(l['from'] == from_id and l['to'] == to_id for l in map_data['links']):
-                    skipped += 1
-                    continue
-                link_id = f'l{int(time.time() * 1000)}{i}'
-                map_data['links'].append({
-                    'id': link_id,
-                    'from': from_id,
-                    'to': to_id,
-                    'label': op_data.get('label', ''),
-                    'color': op_data.get('color', '#94a3b8'),
-                    'style': op_data.get('style', 'dashed')
-                })
-
-            elif op == 'add_frame':
-                if 'frames' not in map_data:
-                    map_data['frames'] = []
-                frame_id = op_data.get('id') or f'f{int(time.time() * 1000)}'
-                if any(f['id'] == frame_id for f in map_data['frames']):
-                    skipped += 1
-                    continue
-                map_data['frames'].append({
-                    'id': frame_id,
-                    'title': op_data.get('title', 'Zone'),
-                    'color': op_data.get('color', '#dbeafe'),
-                    'x': op_data.get('x', 0),
-                    'y': op_data.get('y', 0),
-                    'w': op_data.get('w', 400),
-                    'h': op_data.get('h', 300)
-                })
-
-            elif op == 'add_tag':
-                map_data.setdefault('settings', {}).setdefault('tags', [])
-                tag_id = op_data['id']
-                if any(t['id'] == tag_id for t in map_data['settings']['tags']):
-                    skipped += 1
-                    continue
-                map_data['settings']['tags'].append({
-                    'id': tag_id,
-                    'name': op_data.get('label', ''),
-                    'color': op_data.get('color', '#94a3b8')
-                })
-
-            elif op == 'update_node':
-                node_id = op_data['id']
-                node = map_data['nodes'].get(node_id)
-                if not node:
-                    raise ValueError(f"Node '{node_id}' not found")
-                for key in ('text', 'body', 'tags', 'color'):
-                    if key in op_data:
-                        node[key] = op_data[key]
-
-            elif op == 'delete_node':
-                node_id = op_data['id']
-                if node_id not in map_data.get('nodes', {}) or node_id == map_data.get('rootId'):
-                    skipped += 1
-                    continue
-                _delete_node_recursive(map_data, node_id)
-                if 'links' in map_data:
-                    map_data['links'] = [l for l in map_data['links']
-                                         if l['from'] != node_id and l['to'] != node_id]
-
-            else:
-                raise ValueError(f"Unknown operation '{op}'")
-
-            applied += 1
-
-        except Exception as e:
-            skipped += 1
-            errors.append({'index': i, 'op': op_data.get('op'), 'error': str(e)})
-
-    # Save
-    map_data['updatedAt'] = int(time.time() * 1000)
-    serialized = _save_map_data(map_data, raw_data)
-    conn.execute('UPDATE maps SET data = ?, updated_at = ? WHERE id = ?',
-                 (serialized, map_data['updatedAt'], map_id))
-    conn.commit()
-    conn.close()
-
-    result = {
-        'ok': True,
-        'map_id': map_id,
-        'operations_applied': applied,
-        'operations_skipped': skipped,
-        'node_ids': node_ids
-    }
-    if errors:
-        result['errors'] = errors
-    return jsonify(result)
 
 
 @app.route('/api/maps/<map_id>/outline', methods=['GET'])
@@ -1195,17 +1195,17 @@ def map_outline(map_id):
     """Return a simplified outline view of a map (for AI context)."""
     user = request.current_user
     conn = get_db()
-    row = conn.execute('SELECT data, title, user_id FROM maps WHERE id = ?', (map_id,)).fetchone()
+    try:
+        row = conn.execute('SELECT data, title, user_id FROM maps WHERE id = ?', (map_id,)).fetchone()
 
-    if not row:
+        if not row:
+            return jsonify({'error': 'Map not found'}), 404
+
+        if row['user_id'] != user['id'] and not user.get('is_admin'):
+            return jsonify({'error': 'Accès refusé'}), 403
+    finally:
         conn.close()
-        return jsonify({'error': 'Map not found'}), 404
 
-    if row['user_id'] != user['id'] and not user.get('is_admin'):
-        conn.close()
-        return jsonify({'error': 'Accès refusé'}), 403
-
-    conn.close()
     map_data = _load_map_data(row['data'])
     nodes = map_data.get('nodes', {})
 
@@ -1276,8 +1276,9 @@ def static_files(path):
     # Login page and its assets are public
     if path in ('login.html', 'shared.html'):
         return send_from_directory(app.static_folder, path)
-    # Static assets (CSS, JS, fonts) are always accessible
-    if path.startswith('src/') or path.endswith('.css') or path.endswith('.js') or path.endswith('.ico'):
+    # Static assets — allowlist of known public directories/files
+    ALLOWED_STATIC = ('src/', 'styles.css', 'favicon.svg', 'favicon.ico')
+    if any(path == a or path.startswith(a) for a in ALLOWED_STATIC):
         return send_from_directory(app.static_folder, path)
     # Everything else requires login
     user = get_current_user()

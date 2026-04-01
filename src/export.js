@@ -282,59 +282,6 @@ export function exportPdf(svgElement, map, pan) {
  * This is a minimal PDF generator without external dependencies
  */
 function generateSimplePdf(imgDataUrl, pageWidth, pageHeight, x, y, imgWidth, imgHeight, map) {
-    // Extract base64 data from data URL
-    const base64Data = imgDataUrl.split(',')[1];
-    const imgBytes = atob(base64Data);
-
-    // PDF structure
-    const objects = [];
-    let objectCount = 0;
-
-    function addObject(content) {
-        objectCount++;
-        objects.push({ id: objectCount, content });
-        return objectCount;
-    }
-
-    // Convert mm to PDF points (1 mm = 2.834645669 points)
-    const mmToPt = 2.834645669;
-    const pWidth = pageWidth * mmToPt;
-    const pHeight = pageHeight * mmToPt;
-    const imgX = x * mmToPt;
-    const imgY = (pageHeight - y - imgHeight) * mmToPt; // PDF Y is from bottom
-    const imgW = imgWidth * mmToPt;
-    const imgH = imgHeight * mmToPt;
-
-    // Object 1: Catalog
-    addObject('<< /Type /Catalog /Pages 2 0 R >>');
-
-    // Object 2: Pages
-    addObject('<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
-
-    // Object 3: Page
-    addObject(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pWidth.toFixed(2)} ${pHeight.toFixed(2)}] /Contents 4 0 R /Resources << /XObject << /Im0 5 0 R >> >> >>`);
-
-    // Object 4: Content stream
-    const contentStream = `q ${imgW.toFixed(2)} 0 0 ${imgH.toFixed(2)} ${imgX.toFixed(2)} ${imgY.toFixed(2)} cm /Im0 Do Q`;
-    addObject(`<< /Length ${contentStream.length} >>\nstream\n${contentStream}\nendstream`);
-
-    // Object 5: Image XObject
-    const imgBinary = new Uint8Array(imgBytes.length);
-    for (let i = 0; i < imgBytes.length; i++) {
-        imgBinary[i] = imgBytes.charCodeAt(i);
-    }
-
-    // For PNG, we need to decode and re-encode as raw image data
-    // This is complex, so let's use JPEG instead via canvas
-    // Actually, let's just embed as DCTDecode (JPEG-like) which most viewers support
-
-    // Simpler approach: create a downloadable HTML file that opens as PDF
-    // Or use the browser's print functionality
-
-    // Actually, the simplest reliable approach without dependencies:
-    // Return an SVG wrapped in HTML that can be printed to PDF
-    // Let's switch to using window.print() approach
-
     return createPrintablePdf(imgDataUrl, pageWidth, pageHeight, x, y, imgWidth, imgHeight, map);
 }
 

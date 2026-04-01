@@ -37,6 +37,13 @@ import { getTemplates, buildFromTemplate } from './templates.js';
 import { initCommandPalette, openCommandPalette } from './command-palette.js';
 import { openEmojiPicker, closeEmojiPicker } from './emoji-picker.js';
 
+function sanitizeHtml(html) {
+    if (typeof DOMPurify !== 'undefined') return DOMPurify.sanitize(html);
+    const div = document.createElement('div');
+    div.textContent = html;
+    return div.innerHTML;
+}
+
 const MAPS_ENDPOINT = '/api/maps';
 let LAST_MAP_STORAGE_KEY = 'mindmap:lastMapId';
 
@@ -124,6 +131,7 @@ let linkPreviewEl = null; // Temporary SVG line during link creation
 let undoStack = [];
 let redoStack = [];
 const MAX_UNDO = 50;
+const originalDataUrlCache = new Map(); // nodeId → originalDataUrl
 
 // Search state
 let searchMatches = [];
@@ -280,6 +288,7 @@ function wireUI() {
     if (addChildBtn) {
         addChildBtn.onclick = () => {
             if (!map) return;
+            if (!selectedId) return;
             pushUndo();
             const id = addChild(map, selectedId);
             selectedId = id;
@@ -671,8 +680,8 @@ function wireUI() {
         noteTooltip.className = 'note-tooltip';
         const preview = node.body.length > 300 ? node.body.slice(0, 300) + '…' : node.body;
         noteTooltip.innerHTML = typeof marked !== 'undefined' && marked.parse
-            ? marked.parse(preview)
-            : preview.replace(/\n/g, '<br>');
+            ? sanitizeHtml(marked.parse(preview))
+            : sanitizeHtml(preview).replace(/\n/g, '<br>');
         document.body.appendChild(noteTooltip);
 
         // Position near the node
@@ -1223,8 +1232,8 @@ function wireUI() {
         { label: 'Nouvelle carte', shortcut: '', fn: () => showTemplatePicker() },
         { label: 'Ouvrir une carte', shortcut: '', fn: () => loadBtn?.click() },
         { label: 'Exporter en Markdown', shortcut: '', fn: () => { if (map) exportMarkdown(map); } },
-        { label: 'Exporter en PNG', shortcut: '', fn: () => { if (map) exportImage(map, viewport); } },
-        { label: 'Exporter en PDF', shortcut: '', fn: () => { if (map) exportPdf(map, viewport); } },
+        { label: 'Exporter en PNG', shortcut: '', fn: () => { if (map) exportImage(svgElement, map, pan); } },
+        { label: 'Exporter en PDF', shortcut: '', fn: () => { if (map) exportPdf(svgElement, map, pan); } },
         { label: 'Vue Plan / Outline', shortcut: '', fn: () => toggleOutline() },
         { label: 'Tâches', shortcut: 'T', fn: () => openTaskModal(selectedId || map?.rootId) },
         { label: 'Configuration', shortcut: '', fn: () => configBtn?.click() },
@@ -1350,6 +1359,12 @@ function updateUndoRedoButtons() {
 
 function pushUndo() {
     if (!map) return;
+    // Cache originalDataUrl before stripping from snapshot
+    Object.values(map.nodes || {}).forEach(n => {
+        if (n.media?.originalDataUrl) {
+            originalDataUrlCache.set(n.id, n.media.originalDataUrl);
+        }
+    });
     const snapshot = JSON.parse(JSON.stringify(map));
     // Strip large image data from undo snapshots
     Object.values(snapshot.nodes || {}).forEach(n => {
@@ -1368,6 +1383,12 @@ function undo() {
     const mapId = map.id;
     map = ensureSettings(prev);
     map.id = mapId; // preserve ID
+    // Restore originalDataUrl from cache
+    Object.values(map.nodes || {}).forEach(n => {
+        if (n.media && !n.media.originalDataUrl && originalDataUrlCache.has(n.id)) {
+            n.media.originalDataUrl = originalDataUrlCache.get(n.id);
+        }
+    });
     selectedId = map.rootId;
     multiSelected.clear();
     layoutDirty = true;
@@ -1384,6 +1405,12 @@ function redo() {
     const mapId = map.id;
     map = ensureSettings(next);
     map.id = mapId;
+    // Restore originalDataUrl from cache
+    Object.values(map.nodes || {}).forEach(n => {
+        if (n.media && !n.media.originalDataUrl && originalDataUrlCache.has(n.id)) {
+            n.media.originalDataUrl = originalDataUrlCache.get(n.id);
+        }
+    });
     selectedId = map.rootId;
     multiSelected.clear();
     layoutDirty = true;
@@ -2266,11 +2293,15 @@ function finishEditing() {
     if (!editingInput || !map) return;
     const inp = editingInput;
     const id = editingId;
+    const origText = editingOriginalText;
     editingInput = null;
     editingId = null;
     editingOriginalText = null;
     inp.removeEventListener('blur', finishEditing);
-    if (map.nodes[id]) map.nodes[id].text = inp.value;
+    if (map.nodes[id]) {
+        if (inp.value !== origText) pushUndo();
+        map.nodes[id].text = inp.value;
+    }
     if (document.body.contains(inp)) document.body.removeChild(inp);
     markLayoutDirty();
     update();
@@ -2854,7 +2885,7 @@ function openNoteViewModal(nodeId) {
     titleEl.textContent = node.text || 'Sans titre';
     modal.dataset.nodeId = nodeId;
     viewerEl.innerHTML = typeof marked !== 'undefined'
-        ? marked.parse(node.body, { breaks: true, gfm: true, sanitize: false })
+        ? sanitizeHtml(marked.parse(node.body, { breaks: true, gfm: true }))
         : '';
     if (typeof marked === 'undefined') {
         const pre = document.createElement('pre');
@@ -3077,12 +3108,17 @@ function openMapList() {
     refreshMapList();
 }
 
+function shouldHideBackdrop() {
+    const modals = ['configModal', 'helpModal', 'noteModal', 'noteViewModal', 'historyModal', 'mapListModal', 'adminModal', 'taskModal'];
+    return modals.every(id => {
+        const el = document.getElementById(id);
+        return !el || el.classList.contains('hidden');
+    });
+}
+
 function closeMapList() {
     mapListModal.classList.add('hidden');
-    if (configModal.classList.contains('hidden') && helpModal.classList.contains('hidden')
-        && document.getElementById('noteModal')?.classList.contains('hidden') !== false
-        && document.getElementById('noteViewModal')?.classList.contains('hidden') !== false
-        && document.getElementById('historyModal')?.classList.contains('hidden') !== false) {
+    if (shouldHideBackdrop()) {
         modalBackdrop.classList.add('hidden');
     }
 }
@@ -3622,14 +3658,20 @@ async function runAutosave() {
     cancelAutosaveTimer();
     autosaveInFlight = true;
     const savingMap = map;
-    autosavePending = false;
+    const mapSnapshot = JSON.parse(JSON.stringify(map));
+    // Strip computed/transient layout properties before saving
+    Object.values(mapSnapshot.nodes || {}).forEach(n => {
+        delete n._lines;
+        delete n.depth;
+        delete n.direction;
+    });
     lastSaveError = null;
     updateSaveStatus();
     try {
         const payload = {
-            id: map.id || null,
-            title: map.title,
-            map
+            id: mapSnapshot.id || null,
+            title: mapSnapshot.title,
+            map: mapSnapshot
         };
         const resp = await fetch(MAPS_ENDPOINT, {
             method: 'POST',
@@ -3664,11 +3706,11 @@ async function runAutosave() {
         if (data?.updatedAt && map === savingMap) {
             map.updatedAt = data.updatedAt;
         }
+        autosavePending = false;
         update();
     } catch (err) {
         console.error(err);
         lastSaveError = err;
-        autosavePending = true;
         if (isNetworkError(err)) {
             disableRemote('Impossible de contacter l\'API distante.');
         }

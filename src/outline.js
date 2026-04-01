@@ -391,7 +391,8 @@ function buildNoteAccordion(nodeId, body, startOpen) {
     const content = document.createElement('div');
     content.className = 'mobile-note-content';
     if (typeof marked !== 'undefined' && marked.parse) {
-        content.innerHTML = marked.parse(body, { breaks: true });
+        const html = marked.parse(body, { breaks: true });
+        content.innerHTML = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(html) : '';
     } else {
         content.textContent = body;
     }

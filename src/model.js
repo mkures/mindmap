@@ -62,11 +62,9 @@ export function createEmptyMap() {
 
 // Generate a unique node ID that doesn't collide with existing nodes
 function generateNodeId(map) {
-    let counter = Object.keys(map.nodes).length + 1;
-    let id = 'n' + counter;
+    let id = 'n' + crypto.randomUUID().replace(/-/g, '').slice(0, 8);
     while (map.nodes[id]) {
-        counter++;
-        id = 'n' + counter;
+        id = 'n' + crypto.randomUUID().replace(/-/g, '').slice(0, 8);
     }
     return id;
 }
@@ -201,6 +199,12 @@ export function copySubtree(map, nodeId) {
             color: n.color,
             side: n.side
         };
+        if (n.body) subtree.nodes[id].body = n.body;
+        if (n.tasks) subtree.nodes[id].tasks = JSON.parse(JSON.stringify(n.tasks));
+        if (n.tags) subtree.nodes[id].tags = [...n.tags];
+        if (n.customColor) subtree.nodes[id].customColor = n.customColor;
+        if (n.collapsed) subtree.nodes[id].collapsed = n.collapsed;
+        if (n.nodeType) subtree.nodes[id].nodeType = n.nodeType;
         if (n.media) {
             subtree.nodes[id].media = { ...n.media };
         }

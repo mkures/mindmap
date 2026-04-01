@@ -7,6 +7,8 @@ const V_GAP = 20;
 const CHAR_WIDTH = 8; // Approximate character width
 const PADDING = 20;
 
+const MAX_DEPTH = 200;
+
 const FALLBACK_COLORS = ['#ffffff', '#ff6f59', '#f6bd60', '#43aa8b', '#577590', '#d7263d', '#06d6a0'];
 
 // Wrap text into lines that fit within maxWidth
@@ -49,9 +51,9 @@ export function layout(map) {
     // Track visited nodes to prevent infinite recursion from circular references
     const visited = new Set();
 
-    function measure(id) {
+    function measure(id, depth = 0) {
         // Prevent infinite recursion
-        if (visited.has(id)) {
+        if (visited.has(id) || depth > MAX_DEPTH) {
             console.warn(`[layout] Circular reference detected at node ${id}`);
             return 40;
         }
@@ -93,7 +95,7 @@ export function layout(map) {
         }
         let total = 0;
         validChildren.forEach(c => {
-            total += measure(c);
+            total += measure(c, depth + 1);
         });
         total += V_GAP * (validChildren.length - 1);
         heights[id] = Math.max(node.h, total);
@@ -247,8 +249,8 @@ export function layout(map) {
         const fHeights = {};
         const fVisited = new Set();
 
-        function measureFree(id) {
-            if (fVisited.has(id)) return 40;
+        function measureFree(id, depth = 0) {
+            if (fVisited.has(id) || depth > MAX_DEPTH) return 40;
             fVisited.add(id);
             const node = map.nodes[id];
             if (!node) return 40;
@@ -256,7 +258,7 @@ export function layout(map) {
             const mediaWidth = node.media ? node.media.width + 10 : 0;
             const contentWidth = Math.min(textWidth, MAX_NODE_W - PADDING);
             node.w = Math.max(MIN_NODE_W, contentWidth + PADDING + mediaWidth);
-            const wrapWidth = MAX_NODE_W - PADDING - mediaWidth;
+            const wrapWidth = Math.max(CHAR_WIDTH * 2, MAX_NODE_W - PADDING - mediaWidth);
             node._lines = wrapText(node.text, wrapWidth);
             const textHeight = node._lines.length * LINE_HEIGHT + 10;
             const mediaHeight = node.media ? node.media.height + 10 : 0;
@@ -264,7 +266,7 @@ export function layout(map) {
             if (node.collapsed) { fHeights[id] = node.h; return node.h; }
             const kids = (node.children || []).filter(c => map.nodes[c] && !fVisited.has(c));
             if (!kids.length) { fHeights[id] = node.h; return node.h; }
-            let total = kids.reduce((s, c) => s + measureFree(c), 0) + V_GAP * (kids.length - 1);
+            let total = kids.reduce((s, c) => s + measureFree(c, depth + 1), 0) + V_GAP * (kids.length - 1);
             fHeights[id] = Math.max(node.h, total);
             return fHeights[id];
         }

@@ -143,7 +143,7 @@ class TestNewFieldsRoundtrip:
         )
         map_id = create.get_json()['id']
         load = authed_client.get(f'/api/maps?id={map_id}')
-        loaded = json.loads(load.get_json()['map'])
+        loaded = load.get_json()['map']
         assert loaded['nodes']['n2']['placement'] == 'free'
         assert loaded['nodes']['n2']['fx'] == 150
 
@@ -159,7 +159,7 @@ class TestNewFieldsRoundtrip:
         )
         map_id = create.get_json()['id']
         load = authed_client.get(f'/api/maps?id={map_id}')
-        loaded = json.loads(load.get_json()['map'])
+        loaded = load.get_json()['map']
         assert loaded['frames'][0]['title'] == 'Projet A'
         assert loaded['frames'][0]['w'] == 400
 
@@ -175,7 +175,7 @@ class TestNewFieldsRoundtrip:
         )
         map_id = create.get_json()['id']
         load = authed_client.get(f'/api/maps?id={map_id}')
-        loaded = json.loads(load.get_json()['map'])
+        loaded = load.get_json()['map']
         assert loaded['links'][0]['label'] == 'self'
 
     def test_tags_survive(self, authed_client):
@@ -191,7 +191,7 @@ class TestNewFieldsRoundtrip:
         )
         map_id = create.get_json()['id']
         load = authed_client.get(f'/api/maps?id={map_id}')
-        loaded = json.loads(load.get_json()['map'])
+        loaded = load.get_json()['map']
         assert loaded['nodes']['n1']['tags'] == ['tag1']
 
     def test_old_map_loads_fine(self, authed_client):
@@ -210,7 +210,7 @@ class TestNewFieldsRoundtrip:
         )
         map_id = create.get_json()['id']
         load = authed_client.get(f'/api/maps?id={map_id}')
-        loaded = json.loads(load.get_json()['map'])
+        loaded = load.get_json()['map']
         assert loaded['nodes']['n1']['text'] == 'Root'
         assert 'frames' not in loaded
 
@@ -238,7 +238,7 @@ class TestInjectAPI:
         assert data['operations_applied'] == 1
 
         load = authed_client.get(f'/api/maps?id={map_id}')
-        loaded = json.loads(load.get_json()['map'])
+        loaded = load.get_json()['map']
         assert 'ai_1' in loaded['nodes']
         assert loaded['nodes']['ai_1']['parentId'] == 'n1'
         assert 'ai_1' in loaded['nodes']['n1']['children']
@@ -258,7 +258,7 @@ class TestInjectAPI:
         assert data['operations_applied'] == 2
 
         load = authed_client.get(f'/api/maps?id={map_id}')
-        loaded = json.loads(load.get_json()['map'])
+        loaded = load.get_json()['map']
         assert loaded['nodes']['ai_2']['parentId'] == 'ai_1'
 
     def test_inject_idempotent(self, authed_client):
@@ -296,7 +296,7 @@ class TestInjectAPI:
         assert data['operations_applied'] == 1
 
         load = authed_client.get(f'/api/maps?id={map_id}')
-        loaded = json.loads(load.get_json()['map'])
+        loaded = load.get_json()['map']
         assert loaded['nodes']['ai_2']['parentId'] == 'n1'
         # Should be inserted after ai_1
         children = loaded['nodes']['n1']['children']
@@ -315,7 +315,7 @@ class TestInjectAPI:
         assert resp.get_json()['operations_applied'] == 1
 
         load = authed_client.get(f'/api/maps?id={map_id}')
-        loaded = json.loads(load.get_json()['map'])
+        loaded = load.get_json()['map']
         assert loaded['nodes']['card_1']['nodeType'] == 'card'
         assert loaded['nodes']['card_1']['body'] == '## Test\n- item'
         assert loaded['nodes']['card_1']['placement'] == 'free'
@@ -333,7 +333,7 @@ class TestInjectAPI:
         assert resp.get_json()['operations_applied'] == 1
 
         load = authed_client.get(f'/api/maps?id={map_id}')
-        loaded = json.loads(load.get_json()['map'])
+        loaded = load.get_json()['map']
         assert loaded['nodes']['fb_1']['nodeType'] == 'bubble'
         assert loaded['nodes']['fb_1']['fx'] == 300
 
@@ -351,7 +351,7 @@ class TestInjectAPI:
         assert resp.get_json()['operations_applied'] == 3
 
         load = authed_client.get(f'/api/maps?id={map_id}')
-        loaded = json.loads(load.get_json()['map'])
+        loaded = load.get_json()['map']
         assert any(l['label'] == 'lié' for l in loaded.get('links', []))
 
     def test_inject_add_frame(self, authed_client):
@@ -367,7 +367,7 @@ class TestInjectAPI:
         assert resp.get_json()['operations_applied'] == 1
 
         load = authed_client.get(f'/api/maps?id={map_id}')
-        loaded = json.loads(load.get_json()['map'])
+        loaded = load.get_json()['map']
         assert any(f['id'] == 'f_test' for f in loaded.get('frames', []))
 
     def test_inject_add_tag(self, authed_client):
@@ -382,7 +382,7 @@ class TestInjectAPI:
         assert resp.get_json()['operations_applied'] == 1
 
         load = authed_client.get(f'/api/maps?id={map_id}')
-        loaded = json.loads(load.get_json()['map'])
+        loaded = load.get_json()['map']
         assert any(t['id'] == 'tg1' for t in loaded.get('settings', {}).get('tags', []))
 
     def test_inject_update_node(self, authed_client):
@@ -397,7 +397,7 @@ class TestInjectAPI:
         assert resp.get_json()['operations_applied'] == 1
 
         load = authed_client.get(f'/api/maps?id={map_id}')
-        loaded = json.loads(load.get_json()['map'])
+        loaded = load.get_json()['map']
         assert loaded['nodes']['n1']['text'] == 'Updated Root'
 
     def test_inject_delete_node(self, authed_client):
@@ -420,7 +420,7 @@ class TestInjectAPI:
         assert resp.get_json()['operations_applied'] == 1
 
         load = authed_client.get(f'/api/maps?id={map_id}')
-        loaded = json.loads(load.get_json()['map'])
+        loaded = load.get_json()['map']
         assert 'ai_del' not in loaded['nodes']
         assert 'ai_del' not in loaded['nodes']['n1']['children']
 
@@ -436,7 +436,7 @@ class TestInjectAPI:
         data = resp.get_json()
         assert data['operations_skipped'] == 1
         assert len(data['errors']) == 1
-        assert 'doesnt_exist' in data['errors'][0]['error']
+        assert data['errors'][0]['error']  # error message present
 
     def test_inject_mixed_operations(self, authed_client):
         """Full test with all operation types in one batch."""

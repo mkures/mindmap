@@ -113,6 +113,7 @@
         .collapse-indicator { cursor: pointer; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js" integrity="sha384-nSPPn01ry1wMKWnpMRGBMkNTGLJMnyzFDclWyJFy/M0n9E4j8bVxb6GO4+6SEbH" crossorigin="anonymous"></script>
 </head>
 <body>
     <div id="sharedHeader" class="hidden">
@@ -231,7 +232,9 @@
 
                 function showNote(title, body) {
                     noteTitle.textContent = title;
-                    noteBody.innerHTML = marked.parse(body);
+                    noteBody.innerHTML = typeof DOMPurify !== 'undefined'
+                        ? DOMPurify.sanitize(marked.parse(body))
+                        : '';
                     noteOverlay.classList.add('open');
                 }
 

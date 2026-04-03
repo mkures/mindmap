@@ -2071,14 +2071,59 @@ body.presentation-mode #presentation-badge {
     background: none;
     border: none;
     cursor: pointer;
-    font-size: 12px;
-    color: #999;
-    padding: 0;
+    font-size: 13px;
+    color: #888;
+    padding: 0 2px;
     line-height: 1;
 }
 
 #presentation-badge button:hover {
-    color: #333;
+    color: #222;
+}
+
+.pres-sep {
+    color: #ccc;
+}
+
+.pres-hint {
+    font-size: 11px;
+    color: #aaa;
+}
+
+/* Dark mode */
+body.presentation-dark {
+    background: #111;
+}
+
+body.presentation-dark #appContainer,
+body.presentation-dark #mindmap {
+    background: #111;
+}
+
+body.presentation-dark #gridBg {
+    display: none;
+}
+
+body.presentation-dark #presentation-badge {
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(255,255,255,0.1);
+    color: #ccc;
+}
+
+body.presentation-dark #presentation-badge button {
+    color: #999;
+}
+
+body.presentation-dark #presentation-badge button:hover {
+    color: #eee;
+}
+
+body.presentation-dark #presentation-badge .pres-hint {
+    color: #555;
+}
+
+body.presentation-dark #presentation-badge .pres-sep {
+    color: #444;
 }
 
 /* ══════════════════════════════════════════════════════

@@ -975,14 +975,65 @@ function wireUI() {
     const presentationTitle = document.getElementById('presentation-title');
     const presentationExit = document.getElementById('presentation-exit');
 
+    let presentationSpotlight = false;
+    let presentationDark = false;
+    let spotlightEl = null;
+
+    function centerOnNode(id) {
+        if (!map || !svgElement) return;
+        const node = map.nodes[id];
+        if (!node) return;
+        pan.x = svgElement.clientWidth / 2 - (node.x + (node.w || 0) / 2) * pan.scale;
+        pan.y = svgElement.clientHeight / 2 - (node.y + (node.h || 0) / 2) * pan.scale;
+    }
+
+    function updateSpotlight() {
+        if (!spotlightEl) return;
+        if (!presentationSpotlight || !selectedId || !map) {
+            spotlightEl.style.display = 'none';
+            return;
+        }
+        const node = map.nodes[selectedId];
+        if (!node) { spotlightEl.style.display = 'none'; return; }
+        const pad = 24;
+        const x = node.x * pan.scale + pan.x - pad;
+        const y = node.y * pan.scale + pan.y - pad;
+        const w = (node.w || 120) * pan.scale + pad * 2;
+        const h = (node.h || 40) * pan.scale + pad * 2;
+        const r = 12;
+        const W = svgElement.clientWidth;
+        const H = svgElement.clientHeight;
+        // Full rect minus rounded hole via clip-path polygon approximation — use SVG mask instead
+        spotlightEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
+        spotlightEl.style.width = W + 'px';
+        spotlightEl.style.height = H + 'px';
+        spotlightEl.style.display = 'block';
+        const mask = spotlightEl.querySelector('#spotlight-mask-hole');
+        if (mask) {
+            mask.setAttribute('x', x);
+            mask.setAttribute('y', y);
+            mask.setAttribute('width', w);
+            mask.setAttribute('height', h);
+            mask.setAttribute('rx', r);
+        }
+    }
+
     function enterPresentationMode() {
         document.body.classList.add('presentation-mode');
+        if (presentationDark) document.body.classList.add('presentation-dark');
         if (presentationTitle) presentationTitle.textContent = map?.title || '';
         fitToScreen();
+        updateSpotlight();
+        updatePresentationBadge();
     }
 
     function exitPresentationMode() {
         document.body.classList.remove('presentation-mode');
+        document.body.classList.remove('presentation-dark');
+        presentationSpotlight = false;
+        presentationDark = false;
+        if (spotlightEl) spotlightEl.style.display = 'none';
+        updatePresentationBadge();
     }
 
     function togglePresentationMode() {
@@ -993,8 +1044,52 @@ function wireUI() {
         }
     }
 
+    function updatePresentationBadge() {
+        const inPresentation = document.body.classList.contains('presentation-mode');
+        if (!presentationBadge) return;
+        if (!inPresentation) return;
+        const spotBtn = document.getElementById('presentation-spotlight');
+        const darkBtn = document.getElementById('presentation-dark');
+        if (spotBtn) spotBtn.textContent = presentationSpotlight ? '◉' : '○';
+        if (darkBtn) darkBtn.textContent = presentationDark ? '☀' : '☾';
+    }
+
+    // Build spotlight SVG overlay
+    function buildSpotlightOverlay() {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.id = 'presentation-spotlight-overlay';
+        svg.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:50;display:none;';
+        svg.innerHTML = `
+            <defs>
+                <mask id="spotlight-mask">
+                    <rect width="100%" height="100%" fill="white"/>
+                    <rect id="spotlight-mask-hole" x="0" y="0" width="200" height="60" rx="12" fill="black"/>
+                </mask>
+            </defs>
+            <rect width="100%" height="100%" fill="rgba(0,0,0,0.55)" mask="url(#spotlight-mask)"/>`;
+        document.body.appendChild(svg);
+        return svg;
+    }
+    spotlightEl = buildSpotlightOverlay();
+
     if (presentationExit) {
         presentationExit.addEventListener('click', exitPresentationMode);
+    }
+    const presentationSpotlightBtn = document.getElementById('presentation-spotlight');
+    if (presentationSpotlightBtn) {
+        presentationSpotlightBtn.addEventListener('click', () => {
+            presentationSpotlight = !presentationSpotlight;
+            updateSpotlight();
+            updatePresentationBadge();
+        });
+    }
+    const presentationDarkBtn = document.getElementById('presentation-dark');
+    if (presentationDarkBtn) {
+        presentationDarkBtn.addEventListener('click', () => {
+            presentationDark = !presentationDark;
+            document.body.classList.toggle('presentation-dark', presentationDark);
+            updatePresentationBadge();
+        });
     }
 
     window.addEventListener('keydown', e => {
@@ -1015,6 +1110,23 @@ function wireUI() {
             e.preventDefault();
             exitPresentationMode();
             return;
+        }
+        // Presentation mode shortcuts
+        if (document.body.classList.contains('presentation-mode')) {
+            if (e.key === 's' || e.key === 'S') {
+                e.preventDefault();
+                presentationSpotlight = !presentationSpotlight;
+                updateSpotlight();
+                updatePresentationBadge();
+                return;
+            }
+            if (e.key === 'd' || e.key === 'D') {
+                e.preventDefault();
+                presentationDark = !presentationDark;
+                document.body.classList.toggle('presentation-dark', presentationDark);
+                updatePresentationBadge();
+                return;
+            }
         }
         // Allow Ctrl+F and Escape from search input
         if (e.key === 'f' && e.ctrlKey && !e.shiftKey) {
@@ -1734,14 +1846,21 @@ function scrollToNode(id) {
     if (!map || !svgElement) return;
     const node = map.nodes[id];
     if (!node) return;
-    const cx = (node.x + (node.w || 0) / 2) * pan.scale + pan.x;
-    const cy = (node.y + (node.h || 0) / 2) * pan.scale + pan.y;
     const vw = svgElement.clientWidth;
     const vh = svgElement.clientHeight;
-    const margin = 80;
-    if (cx < margin || cx > vw - margin || cy < margin || cy > vh - margin) {
+    if (document.body.classList.contains('presentation-mode')) {
+        // In presentation mode: always center on selected node
         pan.x = vw / 2 - (node.x + (node.w || 0) / 2) * pan.scale;
         pan.y = vh / 2 - (node.y + (node.h || 0) / 2) * pan.scale;
+        updateSpotlight();
+    } else {
+        const cx = (node.x + (node.w || 0) / 2) * pan.scale + pan.x;
+        const cy = (node.y + (node.h || 0) / 2) * pan.scale + pan.y;
+        const margin = 80;
+        if (cx < margin || cx > vw - margin || cy < margin || cy > vh - margin) {
+            pan.x = vw / 2 - (node.x + (node.w || 0) / 2) * pan.scale;
+            pan.y = vh / 2 - (node.y + (node.h || 0) / 2) * pan.scale;
+        }
     }
 }
 

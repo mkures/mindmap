@@ -653,6 +653,16 @@ def save_map():
 
     conn = get_db()
     try:
+        # Prevent duplicate titles when creating a new map
+        if not map_id:
+            dup = conn.execute(
+                'SELECT id FROM maps WHERE title = ? AND user_id = ? AND (trashed IS NULL OR trashed = 0)',
+                (title, user['id'])
+            ).fetchone()
+            if dup:
+                conn.close()
+                return jsonify({'error': f'Une carte "{title}" existe déjà', 'existing_id': dup['id']}), 409
+
         if map_id:
             cursor = conn.execute('SELECT id, user_id FROM maps WHERE id = ?', (map_id,))
             existing = cursor.fetchone()

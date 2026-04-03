@@ -1300,6 +1300,11 @@ function updateRemoteUIState() {
 }
 
 async function loadInitialMap() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const mapIdFromUrl = urlParams.get('map');
+    if (mapIdFromUrl && await loadMapById(mapIdFromUrl, { silentError: true })) {
+        return;
+    }
     const lastId = localStorage.getItem(LAST_MAP_STORAGE_KEY);
     if (lastId && await loadMapById(lastId, { silentError: true })) {
         return;
@@ -1339,6 +1344,9 @@ function setCurrentMap(newMap, { center = true, remember = true } = {}) {
     closeSearch();
     if (remember && map?.id) {
         localStorage.setItem(LAST_MAP_STORAGE_KEY, map.id);
+        const url = new URL(window.location);
+        url.searchParams.set('map', map.id);
+        history.replaceState({ mapId: map.id }, '', url);
     }
     update();
     updateSaveStatus();
@@ -3679,6 +3687,12 @@ async function runAutosave() {
         });
         if (resp.status === 401) {
             window.location.href = '/login';
+            return;
+        }
+        if (resp.status === 409) {
+            const errData = await resp.json().catch(() => ({}));
+            lastSaveError = new Error(errData.error || 'Carte en doublon — renommez-la');
+            updateSaveStatus();
             return;
         }
         if (resp.status === 403) {

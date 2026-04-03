@@ -1022,6 +1022,11 @@ function wireUI() {
         document.body.classList.add('presentation-mode');
         if (presentationDark) document.body.classList.add('presentation-dark');
         if (presentationTitle) presentationTitle.textContent = map?.title || '';
+        // Remove focus from any input so keyboard shortcuts work
+        if (document.activeElement && document.activeElement !== document.body) {
+            document.activeElement.blur();
+        }
+        svgElement?.focus({ preventScroll: true });
         fitToScreen();
         updateSpotlight();
         updatePresentationBadge();
@@ -1111,7 +1116,7 @@ function wireUI() {
             exitPresentationMode();
             return;
         }
-        // Presentation mode shortcuts
+        // Presentation mode shortcuts (bypass input guard)
         if (document.body.classList.contains('presentation-mode')) {
             if (e.key === 's' || e.key === 'S') {
                 e.preventDefault();

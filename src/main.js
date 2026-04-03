@@ -39,9 +39,7 @@ import { openEmojiPicker, closeEmojiPicker } from './emoji-picker.js';
 
 function sanitizeHtml(html) {
     if (typeof DOMPurify !== 'undefined') return DOMPurify.sanitize(html);
-    const div = document.createElement('div');
-    div.textContent = html;
-    return div.innerHTML;
+    return html;
 }
 
 const MAPS_ENDPOINT = '/api/maps';
@@ -680,7 +678,7 @@ function wireUI() {
         noteTooltip.className = 'note-tooltip';
         const preview = node.body.length > 300 ? node.body.slice(0, 300) + '…' : node.body;
         noteTooltip.innerHTML = typeof marked !== 'undefined' && marked.parse
-            ? sanitizeHtml(marked.parse(preview))
+            ? sanitizeHtml(marked.parse(preview, { breaks: true, gfm: true }))
             : sanitizeHtml(preview).replace(/\n/g, '<br>');
         document.body.appendChild(noteTooltip);
 

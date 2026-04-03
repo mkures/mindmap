@@ -970,12 +970,50 @@ function wireUI() {
         }
     });
 
+    // ── Presentation mode ───────────────────────────────────────
+    const presentationBadge = document.getElementById('presentation-badge');
+    const presentationTitle = document.getElementById('presentation-title');
+    const presentationExit = document.getElementById('presentation-exit');
+
+    function enterPresentationMode() {
+        document.body.classList.add('presentation-mode');
+        if (presentationTitle) presentationTitle.textContent = map?.title || '';
+        fitToScreen();
+    }
+
+    function exitPresentationMode() {
+        document.body.classList.remove('presentation-mode');
+    }
+
+    function togglePresentationMode() {
+        if (document.body.classList.contains('presentation-mode')) {
+            exitPresentationMode();
+        } else {
+            enterPresentationMode();
+        }
+    }
+
+    if (presentationExit) {
+        presentationExit.addEventListener('click', exitPresentationMode);
+    }
+
     window.addEventListener('keydown', e => {
         if (!map) return;
         // Command palette
         if (e.key === 'k' && e.ctrlKey) {
             e.preventDefault();
             openCommandPalette();
+            return;
+        }
+        // Presentation mode
+        if (e.key === 'F5') {
+            e.preventDefault();
+            togglePresentationMode();
+            return;
+        }
+        if (e.key === 'Escape' && document.body.classList.contains('presentation-mode')) {
+            e.preventDefault();
+            exitPresentationMode();
             return;
         }
         // Allow Ctrl+F and Escape from search input

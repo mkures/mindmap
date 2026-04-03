@@ -2010,6 +2010,78 @@ body.dragging-node {
 }
 
 /* ══════════════════════════════════════════════════════
+   PRESENTATION MODE (F5)
+   ══════════════════════════════════════════════════════ */
+body.presentation-mode #mapHeader,
+body.presentation-mode #toolbar,
+body.presentation-mode .minimap,
+body.presentation-mode .zoom-hud,
+body.presentation-mode #searchBar,
+body.presentation-mode #outlineView,
+body.presentation-mode .note-tooltip {
+    display: none !important;
+}
+
+body.presentation-mode {
+    background: #ffffff;
+}
+
+body.presentation-mode #appContainer {
+    background: #ffffff;
+}
+
+body.presentation-mode #mindmap {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    cursor: default;
+}
+
+body.presentation-mode #gridBg {
+    display: none;
+}
+
+#presentation-badge {
+    display: none;
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 1000;
+    background: rgba(0,0,0,0.06);
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 12px;
+    color: #666;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    backdrop-filter: blur(4px);
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+body.presentation-mode #presentation-badge {
+    display: flex;
+    opacity: 1;
+}
+
+#presentation-badge button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    color: #999;
+    padding: 0;
+    line-height: 1;
+}
+
+#presentation-badge button:hover {
+    color: #333;
+}
+
+/* ══════════════════════════════════════════════════════
    MOBILE RESPONSIVE (≤768px)
    ══════════════════════════════════════════════════════ */
 @media (max-width: 768px) {

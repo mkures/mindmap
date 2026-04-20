@@ -1174,7 +1174,7 @@ def inject_operations(map_id):
                         'color': op_data.get('color'),
                         'tags': op_data.get('tags', [])
                     }
-                    map_data['nodes'][parent_id]['children'].append(node_id)
+                    map_data['nodes'][parent_id].setdefault('children', []).append(node_id)
                     node_ids[node_id] = node_id
 
                 elif op == 'add_sibling':
@@ -1195,7 +1195,7 @@ def inject_operations(map_id):
                         'color': op_data.get('color'),
                         'tags': op_data.get('tags', [])
                     }
-                    siblings = map_data['nodes'][parent_id]['children']
+                    siblings = map_data['nodes'][parent_id].setdefault('children', [])
                     idx = siblings.index(ref_id) + 1 if ref_id in siblings else len(siblings)
                     siblings.insert(idx, node_id)
                     node_ids[node_id] = node_id
@@ -1314,7 +1314,9 @@ def inject_operations(map_id):
 
             except Exception as e:
                 skipped += 1
-                errors.append({'index': i, 'op': op_data.get('op'), 'error': 'Erreur interne'})
+                err_msg = f'{type(e).__name__}: {e}'
+                print(f'[INJECT] op#{i} ({op_data.get("op")}) failed: {err_msg}', flush=True)
+                errors.append({'index': i, 'op': op_data.get('op'), 'error': err_msg})
 
         # Save
         map_data['updatedAt'] = int(time.time() * 1000)

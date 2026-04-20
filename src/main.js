@@ -120,6 +120,7 @@ let autosaveTimer = null;
 let autosavePending = false;
 let autosaveInFlight = false;
 let lastSaveError = null;
+let lastSaveConflictExistingId = null;
 
 let clipboard = null; // Stores copied subtree
 let selectedLinkId = null; // Currently selected free link
@@ -1489,6 +1490,7 @@ function setCurrentMap(newMap, { center = true, remember = true } = {}) {
     layoutDirty = true;
     autosavePending = false;
     lastSaveError = null;
+    lastSaveConflictExistingId = null;
     selectLink(null);
     selectFrame(null);
     clearRenderCache();
@@ -3834,6 +3836,7 @@ async function runAutosave() {
         delete n.direction;
     });
     lastSaveError = null;
+    lastSaveConflictExistingId = null;
     updateSaveStatus();
     try {
         const payload = {
@@ -3854,7 +3857,8 @@ async function runAutosave() {
         if (resp.status === 409) {
             const errData = await resp.json().catch(() => ({}));
             lastSaveError = new Error(errData.error || 'Carte en doublon — renommez-la');
-            updateSaveStatus();
+            lastSaveConflictExistingId = errData.existing_id || null;
+            autosavePending = false;
             return;
         }
         if (resp.status === 403) {
@@ -3920,7 +3924,10 @@ function updateSaveStatus() {
         return;
     }
     if (lastSaveError) {
-        saveStatusEl.textContent = 'Erreur de sauvegarde. Nouvelle tentative…';
+        const isConflict = !!lastSaveConflictExistingId;
+        saveStatusEl.textContent = isConflict
+            ? `${lastSaveError.message} — renommez la carte pour la sauvegarder`
+            : 'Erreur de sauvegarde. Nouvelle tentative…';
         saveStatusEl.classList.add('error');
         return;
     }

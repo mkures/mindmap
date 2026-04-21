@@ -401,9 +401,20 @@ def backup_to_r2():
         )
         timestamp = time.strftime('%Y%m%d-%H%M%S')
         base = r2_key[:-3] if r2_key.endswith('.db') else r2_key
-        key = f'{base}-{timestamp}.db'
-        s3.upload_file(tmp.name, r2_bucket, key)
-        os.unlink(tmp.name)
+        compress = os.environ.get('R2_BACKUP_COMPRESS', '1') not in ('0', 'false', 'False', '')
+        if compress:
+            import gzip, shutil as _shutil
+            gz_path = tmp.name + '.gz'
+            with open(tmp.name, 'rb') as f_in, gzip.open(gz_path, 'wb', compresslevel=6) as f_out:
+                _shutil.copyfileobj(f_in, f_out)
+            os.unlink(tmp.name)
+            key = f'{base}-{timestamp}.db.gz'
+            s3.upload_file(gz_path, r2_bucket, key, ExtraArgs={'ContentType': 'application/gzip'})
+            os.unlink(gz_path)
+        else:
+            key = f'{base}-{timestamp}.db'
+            s3.upload_file(tmp.name, r2_bucket, key)
+            os.unlink(tmp.name)
         return jsonify({'success': True, 'key': key, 'bucket': r2_bucket})
     except Exception as e:
         print(f'[R2 BACKUP] Error: {e}', flush=True)
@@ -1504,9 +1515,20 @@ def _run_r2_backup():
         )
         timestamp = time.strftime('%Y%m%d-%H%M%S')
         base = r2_key[:-3] if r2_key.endswith('.db') else r2_key
-        key = f'{base}-{timestamp}.db'
-        s3.upload_file(tmp.name, r2_bucket, key)
-        os.unlink(tmp.name)
+        compress = os.environ.get('R2_BACKUP_COMPRESS', '1') not in ('0', 'false', 'False', '')
+        if compress:
+            import gzip, shutil as _shutil
+            gz_path = tmp.name + '.gz'
+            with open(tmp.name, 'rb') as f_in, gzip.open(gz_path, 'wb', compresslevel=6) as f_out:
+                _shutil.copyfileobj(f_in, f_out)
+            os.unlink(tmp.name)
+            key = f'{base}-{timestamp}.db.gz'
+            s3.upload_file(gz_path, r2_bucket, key, ExtraArgs={'ContentType': 'application/gzip'})
+            os.unlink(gz_path)
+        else:
+            key = f'{base}-{timestamp}.db'
+            s3.upload_file(tmp.name, r2_bucket, key)
+            os.unlink(tmp.name)
         print(f'[R2 BACKUP] Success: {key} -> {r2_bucket}', flush=True)
 
         # Cleanup backups older than retention period

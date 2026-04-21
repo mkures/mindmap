@@ -376,6 +376,19 @@ def vacuum_db():
         return jsonify({'error': 'Erreur lors du VACUUM'}), 500
 
 
+def _strip_versions_from_backup(backup_path):
+    """Remove map_versions history from a backup copy and compact it.
+    Local DB keeps history; only uploaded backup is slimmed."""
+    try:
+        conn = sqlite3.connect(backup_path)
+        conn.execute('DELETE FROM map_versions')
+        conn.commit()
+        conn.execute('VACUUM')
+        conn.close()
+    except Exception as e:
+        print(f'[BACKUP] Could not strip map_versions: {e}', flush=True)
+
+
 @app.route('/api/admin/backup', methods=['POST'])
 @requires_admin
 def backup_to_r2():
@@ -416,6 +429,8 @@ def backup_to_r2():
         except Exception:
             import shutil
             shutil.copy2(db_path, tmp.name)
+
+        _strip_versions_from_backup(tmp.name)
 
         # Upload to R2
         s3 = boto3.client(
@@ -1538,6 +1553,8 @@ def _run_r2_backup():
             src_conn.backup(dst_conn)
             dst_conn.close()
         src_conn.close()
+
+        _strip_versions_from_backup(tmp.name)
 
         s3 = boto3.client(
             's3',

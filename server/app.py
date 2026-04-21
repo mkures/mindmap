@@ -229,10 +229,12 @@ def requires_api_auth(f):
 
 
 def requires_admin(f):
-    """Decorator requiring admin privileges."""
+    """Decorator requiring admin privileges (with Basic Auth/API key fallback for API routes)."""
     @wraps(f)
     def decorated(*args, **kwargs):
         user = get_current_user()
+        if not user and request.path.startswith('/api/'):
+            user = _try_api_auth()
         if not user:
             if request.path.startswith('/api/'):
                 return jsonify({'error': 'Non authentifié'}), 401

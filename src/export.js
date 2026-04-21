@@ -156,6 +156,14 @@ export function exportImage(svgElement, map, pan) {
     injectExportStyles(svg);
     // Remove selection highlight
     svg.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'));
+    // Strip any non-data-URL image hrefs — they taint the canvas and cause toBlob to return null
+    svg.querySelectorAll('image').forEach(el => {
+        const href = el.getAttribute('href') || el.getAttribute('xlink:href') || '';
+        if (href && !href.startsWith('data:')) {
+            el.removeAttribute('href');
+            el.removeAttribute('xlink:href');
+        }
+    });
 
     // Convert SVG to canvas
     const svgData = new XMLSerializer().serializeToString(svg);
@@ -179,6 +187,10 @@ export function exportImage(svgElement, map, pan) {
         URL.revokeObjectURL(url);
 
         canvas.toBlob(blob => {
+            if (!blob) {
+                alert('Export PNG impossible : le canvas est contaminé (probablement par une image externe dans la carte). Essayez l\'export SVG ou remplacez les images par des versions locales.');
+                return;
+            }
             const filename = `${map.title || 'mindmap'}.png`;
             downloadBlob(blob, filename);
         }, 'image/png');
@@ -229,6 +241,14 @@ export function exportPdf(svgElement, map, pan) {
     injectExportStyles(svg);
     // Remove selection highlight
     svg.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'));
+    // Strip any non-data-URL image hrefs — they taint the canvas and cause toBlob to return null
+    svg.querySelectorAll('image').forEach(el => {
+        const href = el.getAttribute('href') || el.getAttribute('xlink:href') || '';
+        if (href && !href.startsWith('data:')) {
+            el.removeAttribute('href');
+            el.removeAttribute('xlink:href');
+        }
+    });
 
     // Convert SVG to canvas then to PDF
     const svgData = new XMLSerializer().serializeToString(svg);

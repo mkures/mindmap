@@ -1506,6 +1506,10 @@ def _maybe_backup_r2():
         return
     if not os.environ.get('R2_ENDPOINT_URL'):
         return
+    # Don't double-fire when the user triggers a manual backup
+    if request.path == '/api/admin/backup':
+        _last_backup_time = time.time()
+        return
     now = time.time()
     if now - _last_backup_time < BACKUP_INTERVAL:
         return

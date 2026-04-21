@@ -353,6 +353,27 @@ def backup_db():
     return response
 
 
+@app.route('/api/admin/vacuum', methods=['POST'])
+@requires_admin
+def vacuum_db():
+    """Compact the live SQLite database in place (reclaims space from deleted rows)."""
+    try:
+        size_before = os.path.getsize(DB_PATH)
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute('VACUUM')
+        conn.close()
+        size_after = os.path.getsize(DB_PATH)
+        return jsonify({
+            'success': True,
+            'size_before': size_before,
+            'size_after': size_after,
+            'reclaimed': size_before - size_after,
+        })
+    except Exception as e:
+        print(f'[VACUUM] Error: {e}', flush=True)
+        return jsonify({'error': 'Erreur lors du VACUUM'}), 500
+
+
 @app.route('/api/admin/backup', methods=['POST'])
 @requires_admin
 def backup_to_r2():
@@ -379,13 +400,17 @@ def backup_to_r2():
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
         tmp.close()
 
-        # Atomic copy using SQLite backup API (VACUUM INTO if available, else shutil.copy)
+        # VACUUM INTO produces a compact copy (drops free pages) — much smaller than .backup()
+        os.unlink(tmp.name)
         try:
             src_conn = sqlite3.connect(db_path)
-            dst_conn = sqlite3.connect(tmp.name)
-            src_conn.backup(dst_conn)
+            try:
+                src_conn.execute('VACUUM INTO ?', (tmp.name,))
+            except Exception:
+                dst_conn = sqlite3.connect(tmp.name)
+                src_conn.backup(dst_conn)
+                dst_conn.close()
             src_conn.close()
-            dst_conn.close()
         except Exception:
             import shutil
             shutil.copy2(db_path, tmp.name)
@@ -698,16 +723,17 @@ def save_map():
                 (map_id, title, json.dumps(map_content), now, now, user['id'])
             )
 
-        # Save version snapshot (keep last 30 per map)
+        # Save version snapshot (keep last N per map; configurable via MAP_VERSIONS_KEEP)
+        versions_keep = int(os.environ.get('MAP_VERSIONS_KEEP', 10))
         conn.execute(
             'INSERT INTO map_versions (map_id, data, created_at) VALUES (?, ?, ?)',
             (map_id, json.dumps(map_content), now)
         )
         conn.execute('''
             DELETE FROM map_versions WHERE map_id = ? AND id NOT IN (
-                SELECT id FROM map_versions WHERE map_id = ? ORDER BY created_at DESC LIMIT 30
+                SELECT id FROM map_versions WHERE map_id = ? ORDER BY created_at DESC LIMIT ?
             )
-        ''', (map_id, map_id))
+        ''', (map_id, map_id, versions_keep))
 
         conn.commit()
 
@@ -1499,11 +1525,17 @@ def _run_r2_backup():
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
         tmp.close()
 
+        # VACUUM INTO produces a compact copy (drops free pages) — much smaller than .backup()
+        os.unlink(tmp.name)  # VACUUM INTO requires the target not exist
         src_conn = sqlite3.connect(db_path)
-        dst_conn = sqlite3.connect(tmp.name)
-        src_conn.backup(dst_conn)
+        try:
+            src_conn.execute('VACUUM INTO ?', (tmp.name,))
+        except Exception:
+            # Fallback for older SQLite without VACUUM INTO
+            dst_conn = sqlite3.connect(tmp.name)
+            src_conn.backup(dst_conn)
+            dst_conn.close()
         src_conn.close()
-        dst_conn.close()
 
         s3 = boto3.client(
             's3',
